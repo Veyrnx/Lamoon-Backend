@@ -92,9 +92,9 @@ function App() {
   async function refreshProducts() {
     if (!session) return;
     setProductsLoading(true); setProductsError("");
-    const { data, error } = await supabase.from("products").select("id,name,price,is_active,product_stock(quantity)").eq("is_active",true).order("name");
+    const { data, error } = await supabase.from("products").select("id,name,price,is_active,product_stock(quantity)").eq("is_active", true).order("name");
     if (error) setProductsError(error.message);
-    else setProducts((data ?? []).map((p: any) => ({id:p.id,name:p.name,price:Number(p.price),stock:Number((Array.isArray(p.product_stock)?p.product_stock[0]?.quantity:p.product_stock?.quantity)??0),color:"#d7c9ad"})));
+    else setProducts((data ?? []).map((p: any) => ({ id: p.id, name: p.name, price: Number(p.price), stock: Number((Array.isArray(p.product_stock) ? p.product_stock[0]?.quantity : p.product_stock?.quantity) ?? 0), color: "#d7c9ad" })));
     setProductsLoading(false);
   }
   useEffect(() => { if (session) void refreshProducts(); else setProducts([]); }, [session?.user?.id]);
@@ -139,7 +139,7 @@ function App() {
       setOrdersLoading(true);
       const { data, error } = await supabase
         .from("orders")
-        .select("id, order_number, status, order_date, delivery_date, delivery_type, delivery_address, total_amount, payment_status, payment_method, notes, customers!inner(id, phone, profiles(full_name, phone)), order_items(id, product_name_snapshot, quantity, unit_price, line_total), deliveries(delivery_status)")
+        .select("id, order_number, status, order_date, delivery_date, delivery_type, delivery_address, total_amount, payment_status, payment_method, notes, customers!inner(id, phone, profiles(full_name, phone)), order_items(id, product_name_snapshot, quantity, unit_price, line_total, item_options), deliveries(delivery_status)")
         .order("created_at", { ascending: false });
       if (!mounted) return;
       if (error) {
@@ -165,7 +165,16 @@ function App() {
             address: row.delivery_address || "รับสินค้าที่ร้าน",
             due,
             dueText: delivery ? (delivery.getTime() < Date.now() ? "เลยกำหนดส่ง" : "กำหนดส่งตามวันที่ระบุ") : "ยังไม่กำหนดวันส่ง",
-            items: (row.order_items ?? []).map((item: any) => ({ name: item.product_name_snapshot, qty: item.quantity })),
+            items: (row.order_items ?? []).map((item: any) => {
+              const flavor = item.item_options?.flavor;
+
+              return {
+                name: flavor
+                  ? `${item.product_name_snapshot} — รส${flavor}`
+                  : item.product_name_snapshot,
+                qty: item.quantity,
+              };
+            }),
             total: Number(row.total_amount ?? 0),
             paid: row.payment_status === "paid",
             payment: row.payment_method || "ไม่ระบุ",
@@ -367,7 +376,7 @@ function SideButton({ icon, label, active, badge, onClick }: { icon: IconName; l
 
 function OrdersView({ orders, selected, onSelect, onUpdate, onAccept, onEdit, onCancel, flash }: {
   orders: Order[]; selected?: Order; onSelect: (id: string) => void;
-  onUpdate: (id: string, change: Partial<Order>) => void; onAccept: (id: string, days: number) => void; onEdit: (id: string, address: string, quantities: {id:string;quantity:number}[]) => Promise<boolean>; onCancel: (id: string, reason: string) => Promise<boolean>; flash: (message: string) => void;
+  onUpdate: (id: string, change: Partial<Order>) => void; onAccept: (id: string, days: number) => void; onEdit: (id: string, address: string, quantities: { id: string; quantity: number }[]) => Promise<boolean>; onCancel: (id: string, reason: string) => Promise<boolean>; flash: (message: string) => void;
 }) {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
@@ -410,24 +419,24 @@ function SummaryCard({ icon, label, value, note, urgent }: { icon: IconName; lab
   return <div className="summary-card"><span className={urgent ? "urgent" : ""}><Icon name={icon} /></span><div><small>{label}</small><strong>{value}</strong><p>{note}</p></div></div>;
 }
 
-function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { order: Order; onUpdate: (id: string, change: Partial<Order>) => void; onAccept: (id: string, days: number) => void; onEdit: (id: string, address: string, quantities: {id:string;quantity:number}[]) => Promise<boolean>; onCancel: (id: string, reason: string) => Promise<boolean>; flash: (message: string) => void }) {
+function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { order: Order; onUpdate: (id: string, change: Partial<Order>) => void; onAccept: (id: string, days: number) => void; onEdit: (id: string, address: string, quantities: { id: string; quantity: number }[]) => Promise<boolean>; onCancel: (id: string, reason: string) => Promise<boolean>; flash: (message: string) => void }) {
   const [editing, setEditing] = useState(false);
   const [address, setAddress] = useState(order.address);
-  const [lines, setLines] = useState<{id:string;name:string;quantity:number}[]>([]);
+  const [lines, setLines] = useState<{ id: string; name: string; quantity: number }[]>([]);
   const [saving, setSaving] = useState(false);
   const [reason, setReason] = useState("");
-  useEffect(() => {setEditing(false);setAddress(order.address);setLines([]);setReason("");}, [order.id]);
+  useEffect(() => { setEditing(false); setAddress(order.address); setLines([]); setReason(""); }, [order.id]);
   async function beginEdit() {
-    const {data,error} = await supabase.from("orders").select("order_items(id,product_name_snapshot,quantity)").eq("order_number",order.id).single();
-    if(error){flash(`โหลดรายการแก้ไขไม่สำเร็จ: ${error.message}`);return;}
-    setLines((data?.order_items ?? []).map((l:any)=>({id:l.id,name:l.product_name_snapshot,quantity:l.quantity})));
-    setAddress(order.address === "รับสินค้าที่ร้าน" ? "" : order.address);setEditing(true);
+    const { data, error } = await supabase.from("orders").select("order_items(id,product_name_snapshot,quantity)").eq("order_number", order.id).single();
+    if (error) { flash(`โหลดรายการแก้ไขไม่สำเร็จ: ${error.message}`); return; }
+    setLines((data?.order_items ?? []).map((l: any) => ({ id: l.id, name: l.product_name_snapshot, quantity: l.quantity })));
+    setAddress(order.address === "รับสินค้าที่ร้าน" ? "" : order.address); setEditing(true);
   }
-  async function saveEdit(){setSaving(true);const ok=await onEdit(order.id,address,lines.map(l=>({id:l.id,quantity:l.quantity})));if(ok)setEditing(false);setSaving(false);}
-  async function doCancel(){
-    if(!reason.trim()){flash("กรุณาระบุเหตุผลการยกเลิก");return;}
-    if(!window.confirm(`ยืนยันยกเลิกออเดอร์ ${order.id}? การยกเลิกจะคืนสต็อกถ้วยที่ตัดแล้ว และไม่สามารถย้อนกลับจากหน้านี้ได้`))return;
-    setSaving(true);await onCancel(order.id,reason.trim());setSaving(false);
+  async function saveEdit() { setSaving(true); const ok = await onEdit(order.id, address, lines.map(l => ({ id: l.id, quantity: l.quantity }))); if (ok) setEditing(false); setSaving(false); }
+  async function doCancel() {
+    if (!reason.trim()) { flash("กรุณาระบุเหตุผลการยกเลิก"); return; }
+    if (!window.confirm(`ยืนยันยกเลิกออเดอร์ ${order.id}? การยกเลิกจะคืนสต็อกถ้วยที่ตัดแล้ว และไม่สามารถย้อนกลับจากหน้านี้ได้`)) return;
+    setSaving(true); await onCancel(order.id, reason.trim()); setSaving(false);
   }
   const [leadDays, setLeadDays] = useState(order.leadDays ?? 2);
   const isTubOrder = order.items.some(item => /ไอศกรีมแบบถัง|แบบถัง|ถังไอศกรีม/.test(item.name));
@@ -452,23 +461,23 @@ function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { o
         <span><Icon name={order.paid ? "check" : "clock"} /></span><div><b>{order.paid ? "ชำระเงินแล้ว" : "ยังไม่ได้ชำระเงิน"}</b><small>{order.payment}</small></div>
         {order.slip && <button onClick={() => flash("เปิดดูสลิปการชำระเงิน")}><Icon name="file" size={16} /> ดูสลิป</button>}
       </div>
-      <div style={{padding:"16px 20px",borderTop:"1px solid #e7e0d3",display:"grid",gap:10}}>
+      <div style={{ padding: "16px 20px", borderTop: "1px solid #e7e0d3", display: "grid", gap: 10 }}>
         <div className="section-label">จัดการออเดอร์</div>
-        {order.stage === "new" && <button className="outline-action" disabled={saving} onClick={() => editing ? setEditing(false) : void beginEdit()}><Icon name="edit" size={16}/>{editing ? "ปิดการแก้ไข" : "แก้ไขจำนวนสินค้า / ที่อยู่"}</button>}
-        {editing && <div style={{display:"grid",gap:10}}>
-          <label>ที่อยู่จัดส่ง<input style={{width:"100%",padding:10}} value={address} onChange={e=>setAddress(e.target.value)}/></label>
-          {lines.map(line=><label key={line.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>{line.name}<input type="number" min="1" max="10000" step="1" style={{width:90,padding:8}} value={line.quantity} onChange={e=>setLines(current=>current.map(l=>l.id===line.id?{...l,quantity:Number(e.target.value)}:l))}/></label>)}
+        {order.stage === "new" && <button className="outline-action" disabled={saving} onClick={() => editing ? setEditing(false) : void beginEdit()}><Icon name="edit" size={16} />{editing ? "ปิดการแก้ไข" : "แก้ไขจำนวนสินค้า / ที่อยู่"}</button>}
+        {editing && <div style={{ display: "grid", gap: 10 }}>
+          <label>ที่อยู่จัดส่ง<input style={{ width: "100%", padding: 10 }} value={address} onChange={e => setAddress(e.target.value)} /></label>
+          {lines.map(line => <label key={line.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>{line.name}<input type="number" min="1" max="10000" step="1" style={{ width: 90, padding: 8 }} value={line.quantity} onChange={e => setLines(current => current.map(l => l.id === line.id ? { ...l, quantity: Number(e.target.value) } : l))} /></label>)}
           <small>แก้ไขได้เฉพาะออเดอร์รออนุมัติ ระบบจะคำนวณยอดรวมใหม่ตามราคาที่สั่งเดิม</small>
-          <button className="primary-action" disabled={saving||lines.some(l=>!Number.isInteger(l.quantity)||l.quantity<1)} onClick={()=>void saveEdit()}>บันทึกการแก้ไข</button>
+          <button className="primary-action" disabled={saving || lines.some(l => !Number.isInteger(l.quantity) || l.quantity < 1)} onClick={() => void saveEdit()}>บันทึกการแก้ไข</button>
         </div>}
         {order.stage !== "delivered" && order.stage !== "cancelled" && !order.paid && <>
-          <input style={{padding:10,width:"100%"}} placeholder="เหตุผลการยกเลิก (จำเป็น)" value={reason} onChange={e=>setReason(e.target.value)}/>
-          <button className="outline-action" style={{color:"#aa473a"}} disabled={saving||!reason.trim()} onClick={()=>void doCancel()}><Icon name="trash" size={16}/> ยกเลิกออเดอร์ (เก็บประวัติ)</button>
+          <input style={{ padding: 10, width: "100%" }} placeholder="เหตุผลการยกเลิก (จำเป็น)" value={reason} onChange={e => setReason(e.target.value)} />
+          <button className="outline-action" style={{ color: "#aa473a" }} disabled={saving || !reason.trim()} onClick={() => void doCancel()}><Icon name="trash" size={16} /> ยกเลิกออเดอร์ (เก็บประวัติ)</button>
         </>}
         {order.paid && order.stage !== "cancelled" && <small>ออเดอร์ที่ชำระแล้วต้องจัดการคืนเงินก่อนยกเลิก</small>}
       </div>
       {order.stage === "new" ? (
-        <div className="approval-box">{isTubOrder ? <><div style={{display:"grid",gap:6,marginBottom:12}}><b>วันจัดส่งที่ลูกค้าเลือก</b><span>{order.due}</span><small>ออเดอร์แบบถังใช้วันจัดส่งที่ลูกค้าเลือกไว้ ไม่ต้องกำหนดระยะเวลาเตรียมและจัดส่งใหม่</small></div></> : <><label><span>ระยะเวลาเตรียมและจัดส่ง</span><select value={leadDays} onChange={(e) => setLeadDays(Number(e.target.value))}>{[1, 2, 3, 4, 5, 7].map((day) => <option key={day} value={day}>{day} วัน</option>)}</select></label><p>ระบบจะแจ้งวันส่งโดยประมาณให้ลูกค้าทราบ · ถ้วยธรรมดาตัดสต็อกอัตโนมัติ</p></>}<button onClick={() => onAccept(order.id, leadDays)}><Icon name="check" /> อนุมัติออเดอร์</button></div>
+        <div className="approval-box">{isTubOrder ? <><div style={{ display: "grid", gap: 6, marginBottom: 12 }}><b>วันจัดส่งที่ลูกค้าเลือก</b><span>{order.due}</span><small>ออเดอร์แบบถังใช้วันจัดส่งที่ลูกค้าเลือกไว้ ไม่ต้องกำหนดระยะเวลาเตรียมและจัดส่งใหม่</small></div></> : <><label><span>ระยะเวลาเตรียมและจัดส่ง</span><select value={leadDays} onChange={(e) => setLeadDays(Number(e.target.value))}>{[1, 2, 3, 4, 5, 7].map((day) => <option key={day} value={day}>{day} วัน</option>)}</select></label><p>ระบบจะแจ้งวันส่งโดยประมาณให้ลูกค้าทราบ · ถ้วยธรรมดาตัดสต็อกอัตโนมัติ</p></>}<button onClick={() => onAccept(order.id, leadDays)}><Icon name="check" /> อนุมัติออเดอร์</button></div>
       ) : (
         <div className="workflow">
           <div className="section-label">ขั้นตอนการจัดส่ง</div>
@@ -508,88 +517,88 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [type, setType] = useState<"income" | "expense">("expense");
   const [note, setNote] = useState("");
   const [amount, setAmount] = useState("");
-  const money = (n: number) => n.toLocaleString("th-TH", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-  const formatDate = (date: string) => new Date(date).toLocaleDateString("th-TH", {day:"numeric",month:"short",year:"2-digit"});
-  const dayKey = (date: string) => new Date(date).toLocaleDateString("en-CA", {timeZone:"Asia/Bangkok"});
+  const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatDate = (date: string) => new Date(date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
+  const dayKey = (date: string) => new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
   async function load() {
     setLoading(true); setError("");
     const [manual, orders] = await Promise.all([
-      supabase.from("finance_entries").select("id,entry_type,description,amount,entry_date,created_at").order("entry_date",{ascending:false}),
-      supabase.from("orders").select("id,order_number,total_amount,payment_status,status,order_date,created_at").eq("payment_status","paid").neq("status","cancelled").order("created_at",{ascending:false})
+      supabase.from("finance_entries").select("id,entry_type,description,amount,entry_date,created_at").order("entry_date", { ascending: false }),
+      supabase.from("orders").select("id,order_number,total_amount,payment_status,status,order_date,created_at").eq("payment_status", "paid").neq("status", "cancelled").order("created_at", { ascending: false })
     ]);
     if (manual.error || orders.error) { setError(manual.error?.message || orders.error?.message || "โหลดบัญชีไม่สำเร็จ"); setLoading(false); return; }
-    const manually: FinanceEntry[] = (manual.data ?? []).map((r:any) => ({id:r.id,date:formatDate(r.entry_date),dayKey:dayKey(r.entry_date),type:r.entry_type,category:r.entry_type==="income"?"รายรับอื่น ๆ":"รายจ่าย",note:r.description,amount:Number(r.amount),source:"บันทึกเอง",locked:false}));
-    const sales: FinanceEntry[] = (orders.data ?? []).map((r:any) => ({id:`order:${r.id}`,date:formatDate(r.order_date ?? r.created_at),dayKey:dayKey(r.order_date ?? r.created_at),type:"income",category:"ยอดขายที่ชำระแล้ว",note:r.order_number,amount:Number(r.total_amount),source:"ออเดอร์",locked:true}));
-    setEntries([...manually,...sales].sort((x,y)=>y.dayKey.localeCompare(x.dayKey)));
+    const manually: FinanceEntry[] = (manual.data ?? []).map((r: any) => ({ id: r.id, date: formatDate(r.entry_date), dayKey: dayKey(r.entry_date), type: r.entry_type, category: r.entry_type === "income" ? "รายรับอื่น ๆ" : "รายจ่าย", note: r.description, amount: Number(r.amount), source: "บันทึกเอง", locked: false }));
+    const sales: FinanceEntry[] = (orders.data ?? []).map((r: any) => ({ id: `order:${r.id}`, date: formatDate(r.order_date ?? r.created_at), dayKey: dayKey(r.order_date ?? r.created_at), type: "income", category: "ยอดขายที่ชำระแล้ว", note: r.order_number, amount: Number(r.total_amount), source: "ออเดอร์", locked: true }));
+    setEntries([...manually, ...sales].sort((x, y) => y.dayKey.localeCompare(x.dayKey)));
     setLoading(false);
   }
-  useEffect(()=>{void load();},[]);
-  const income = entries.filter(e=>e.type==="income").reduce((s,e)=>s+e.amount,0);
-  const expense = entries.filter(e=>e.type==="expense").reduce((s,e)=>s+e.amount,0);
-  const last7 = Array.from({length:7},(_,i)=>{const d=new Date();d.setDate(d.getDate()-(6-i));const key=dayKey(d.toISOString());return {key,label:d.toLocaleDateString("th-TH",{weekday:"short"}),income:entries.filter(e=>e.dayKey===key&&e.type==="income").reduce((a,e)=>a+e.amount,0),expense:entries.filter(e=>e.dayKey===key&&e.type==="expense").reduce((a,e)=>a+e.amount,0)};});
-  const maxBar=Math.max(1,...last7.flatMap(d=>[d.income,d.expense]));
-  async function addEntry(e:React.FormEvent) {
-    e.preventDefault();if(!note.trim()||!Number.isFinite(Number(amount))||Number(amount)<=0)return;
-    setBusy(true);setError("");
-    const {error}=await supabase.from("finance_entries").insert({entry_type:type,description:note.trim(),amount:Number(amount)});
-    if(error)setError(error.message);else{setNote("");setAmount("");setFormOpen(false);await load();flash("บันทึกรายการบัญชีลง Supabase แล้ว");}
+  useEffect(() => { void load(); }, []);
+  const income = entries.filter(e => e.type === "income").reduce((s, e) => s + e.amount, 0);
+  const expense = entries.filter(e => e.type === "expense").reduce((s, e) => s + e.amount, 0);
+  const last7 = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); const key = dayKey(d.toISOString()); return { key, label: d.toLocaleDateString("th-TH", { weekday: "short" }), income: entries.filter(e => e.dayKey === key && e.type === "income").reduce((a, e) => a + e.amount, 0), expense: entries.filter(e => e.dayKey === key && e.type === "expense").reduce((a, e) => a + e.amount, 0) }; });
+  const maxBar = Math.max(1, ...last7.flatMap(d => [d.income, d.expense]));
+  async function addEntry(e: React.FormEvent) {
+    e.preventDefault(); if (!note.trim() || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return;
+    setBusy(true); setError("");
+    const { error } = await supabase.from("finance_entries").insert({ entry_type: type, description: note.trim(), amount: Number(amount) });
+    if (error) setError(error.message); else { setNote(""); setAmount(""); setFormOpen(false); await load(); flash("บันทึกรายการบัญชีลง Supabase แล้ว"); }
     setBusy(false);
   }
-  async function removeEntry(entry:FinanceEntry){
-    if(entry.locked||!window.confirm(`ลบรายการ ${entry.note} ใช่หรือไม่?`))return;
-    setBusy(true);setError("");const {error}=await supabase.from("finance_entries").delete().eq("id",entry.id);
-    if(error)setError(error.message);else{await load();flash("ลบรายการบัญชีแล้ว");}setBusy(false);
+  async function removeEntry(entry: FinanceEntry) {
+    if (entry.locked || !window.confirm(`ลบรายการ ${entry.note} ใช่หรือไม่?`)) return;
+    setBusy(true); setError(""); const { error } = await supabase.from("finance_entries").delete().eq("id", entry.id);
+    if (error) setError(error.message); else { await load(); flash("ลบรายการบัญชีแล้ว"); } setBusy(false);
   }
   return <>
     <div className="finance-top">
       <div className="finance-stat income"><small>รายรับทั้งหมด</small><strong>฿{money(income)}</strong><span>ยอดชำระแล้ว + รายรับบันทึกเอง</span></div>
       <div className="finance-stat expense"><small>รายจ่ายทั้งหมด</small><strong>฿{money(expense)}</strong><span>จากรายการรายจ่ายที่บันทึก</span></div>
-      <div className="finance-stat profit"><small>ยอดคงเหลือสุทธิ</small><strong>฿{money(income-expense)}</strong><span>รายรับ − รายจ่าย (ไม่ใช่กำไรทางบัญชี)</span></div>
+      <div className="finance-stat profit"><small>ยอดคงเหลือสุทธิ</small><strong>฿{money(income - expense)}</strong><span>รายรับ − รายจ่าย (ไม่ใช่กำไรทางบัญชี)</span></div>
     </div>
-    {error&&<p role="alert" style={{color:"#a32727",padding:12}}>Supabase: {error}</p>}
-    {loading&&<p>กำลังโหลดข้อมูลบัญชี...</p>}
-    <section className="panel finance-chart-panel"><div className="page-section-head"><div><h2>ภาพรวมรายรับ–รายจ่าย</h2><p>ข้อมูลจริง 7 วันล่าสุด · เวลาไทย</p></div><div className="chart-key"><span className="green"/> รายรับ <span className="brown"/> รายจ่าย</div></div>
-      <div className="big-chart">{last7.map(d=><div className="chart-col" key={d.key}><div><i title={`รายรับ ฿${money(d.income)}`} style={{height:`${d.income/maxBar*100}%`}}/><i title={`รายจ่าย ฿${money(d.expense)}`} style={{height:`${d.expense/maxBar*100}%`}}/></div><small>{d.label}</small></div>)}</div>
+    {error && <p role="alert" style={{ color: "#a32727", padding: 12 }}>Supabase: {error}</p>}
+    {loading && <p>กำลังโหลดข้อมูลบัญชี...</p>}
+    <section className="panel finance-chart-panel"><div className="page-section-head"><div><h2>ภาพรวมรายรับ–รายจ่าย</h2><p>ข้อมูลจริง 7 วันล่าสุด · เวลาไทย</p></div><div className="chart-key"><span className="green" /> รายรับ <span className="brown" /> รายจ่าย</div></div>
+      <div className="big-chart">{last7.map(d => <div className="chart-col" key={d.key}><div><i title={`รายรับ ฿${money(d.income)}`} style={{ height: `${d.income / maxBar * 100}%` }} /><i title={`รายจ่าย ฿${money(d.expense)}`} style={{ height: `${d.expense / maxBar * 100}%` }} /></div><small>{d.label}</small></div>)}</div>
     </section>
-    <section className="panel finance-table-panel"><div className="page-section-head"><div><h2>ตารางบัญชี</h2><p>ยอดขายมาจากออเดอร์ที่ชำระแล้ว · รายจ่ายและรายรับอื่นเพิ่มได้เอง</p></div><div className="finance-actions"><button className="outline-action" onClick={()=>void load()} disabled={busy||loading}>รีเฟรชข้อมูล</button><button className="primary-action" onClick={()=>setFormOpen(!formOpen)} disabled={busy}><Icon name={formOpen?"close":"plus"} size={17}/>{formOpen?"ปิด":"เพิ่มรายการ"}</button></div></div>
-      {formOpen&&<form className="finance-form" onSubmit={e=>void addEntry(e)}><div className="type-toggle"><button type="button" className={type==="income"?"active":""} onClick={()=>setType("income")}>รายรับ</button><button type="button" className={type==="expense"?"active expense":""} onClick={()=>setType("expense")}>รายจ่าย</button></div><label><span>รายละเอียด</span><input value={note} onChange={e=>setNote(e.target.value)} placeholder="เช่น ซื้อวัตถุดิบเพิ่ม" required/></label><label><span>จำนวนเงิน</span><input type="number" min="0.01" step="0.01" value={amount} onChange={e=>setAmount(e.target.value)} required/></label><button className="primary-action" type="submit" disabled={busy}><Icon name="check" size={17}/>บันทึกลง Supabase</button></form>}
-      <div className="account-table"><div className="table-head"><span>วันที่</span><span>ประเภท</span><span>รายละเอียด</span><span>แหล่งข้อมูล</span><span>จำนวนเงิน</span><span/></div>
-        {entries.map(entry=><div className="account-row" key={entry.id}><span>{entry.date}</span><span className={`entry-type ${entry.type}`}>{entry.type==="income"?"รายรับ":"รายจ่าย"}</span><div><b>{entry.category}</b><small>{entry.note}</small></div><span className="source-tag"><Icon name={entry.locked?"bag":"edit"} size={14}/>{entry.source}</span><strong className={entry.type}>{entry.type==="income"?"+":"−"}฿{money(entry.amount)}</strong>{entry.locked?<span title="รายการออเดอร์แก้ไขจากหน้าบัญชีไม่ได้">—</span>:<button disabled={busy} aria-label="ลบรายการ" onClick={()=>void removeEntry(entry)}><Icon name="trash" size={17}/></button>}</div>)}
-        {!loading&&entries.length===0&&<p style={{padding:16}}>ยังไม่มีรายการบัญชีหรือยอดขายที่ชำระแล้ว</p>}
+    <section className="panel finance-table-panel"><div className="page-section-head"><div><h2>ตารางบัญชี</h2><p>ยอดขายมาจากออเดอร์ที่ชำระแล้ว · รายจ่ายและรายรับอื่นเพิ่มได้เอง</p></div><div className="finance-actions"><button className="outline-action" onClick={() => void load()} disabled={busy || loading}>รีเฟรชข้อมูล</button><button className="primary-action" onClick={() => setFormOpen(!formOpen)} disabled={busy}><Icon name={formOpen ? "close" : "plus"} size={17} />{formOpen ? "ปิด" : "เพิ่มรายการ"}</button></div></div>
+      {formOpen && <form className="finance-form" onSubmit={e => void addEntry(e)}><div className="type-toggle"><button type="button" className={type === "income" ? "active" : ""} onClick={() => setType("income")}>รายรับ</button><button type="button" className={type === "expense" ? "active expense" : ""} onClick={() => setType("expense")}>รายจ่าย</button></div><label><span>รายละเอียด</span><input value={note} onChange={e => setNote(e.target.value)} placeholder="เช่น ซื้อวัตถุดิบเพิ่ม" required /></label><label><span>จำนวนเงิน</span><input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required /></label><button className="primary-action" type="submit" disabled={busy}><Icon name="check" size={17} />บันทึกลง Supabase</button></form>}
+      <div className="account-table"><div className="table-head"><span>วันที่</span><span>ประเภท</span><span>รายละเอียด</span><span>แหล่งข้อมูล</span><span>จำนวนเงิน</span><span /></div>
+        {entries.map(entry => <div className="account-row" key={entry.id}><span>{entry.date}</span><span className={`entry-type ${entry.type}`}>{entry.type === "income" ? "รายรับ" : "รายจ่าย"}</span><div><b>{entry.category}</b><small>{entry.note}</small></div><span className="source-tag"><Icon name={entry.locked ? "bag" : "edit"} size={14} />{entry.source}</span><strong className={entry.type}>{entry.type === "income" ? "+" : "−"}฿{money(entry.amount)}</strong>{entry.locked ? <span title="รายการออเดอร์แก้ไขจากหน้าบัญชีไม่ได้">—</span> : <button disabled={busy} aria-label="ลบรายการ" onClick={() => void removeEntry(entry)}><Icon name="trash" size={17} /></button>}</div>)}
+        {!loading && entries.length === 0 && <p style={{ padding: 16 }}>ยังไม่มีรายการบัญชีหรือยอดขายที่ชำระแล้ว</p>}
       </div>
     </section>
   </>;
 }
 
 function ProductsView({ products, refresh, loading, error, flash }: { products: Product[]; refresh: () => Promise<void>; loading: boolean; error: string; flash: (message: string) => void }) {
-  const [open,setOpen]=useState(false), [name,setName]=useState(""), [price,setPrice]=useState(""), [quantity,setQuantity]=useState("0"), [busy,setBusy]=useState(false), [actionError,setActionError]=useState("");
+  const [open, setOpen] = useState(false), [name, setName] = useState(""), [price, setPrice] = useState(""), [quantity, setQuantity] = useState("0"), [busy, setBusy] = useState(false), [actionError, setActionError] = useState("");
   async function add(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setActionError("");
-    const {error}=await supabase.rpc("admin_create_catalog_product",{p_name:name.trim(),p_price:Number(price),p_quantity:Number(quantity)});
-    if(error) setActionError(error.message);
-    else {setName("");setPrice("");setQuantity("0");setOpen(false);await refresh();flash("เพิ่มสินค้าใน Supabase แล้ว");}
+    const { error } = await supabase.rpc("admin_create_catalog_product", { p_name: name.trim(), p_price: Number(price), p_quantity: Number(quantity) });
+    if (error) setActionError(error.message);
+    else { setName(""); setPrice(""); setQuantity("0"); setOpen(false); await refresh(); flash("เพิ่มสินค้าใน Supabase แล้ว"); }
     setBusy(false);
   }
-  async function adjust(id:string,delta:number) {
-    setBusy(true);setActionError("");
-    const {error}=await supabase.rpc("admin_adjust_catalog_stock",{p_product_id:id,p_delta:delta});
-    if(error) setActionError(error.message);else {await refresh();flash("อัปเดตสต็อกใน Supabase แล้ว");}
+  async function adjust(id: string, delta: number) {
+    setBusy(true); setActionError("");
+    const { error } = await supabase.rpc("admin_adjust_catalog_stock", { p_product_id: id, p_delta: delta });
+    if (error) setActionError(error.message); else { await refresh(); flash("อัปเดตสต็อกใน Supabase แล้ว"); }
     setBusy(false);
   }
-  async function hide(id:string,label:string) {
-    if(!window.confirm(`ซ่อนสินค้า "${label}" จากหน้าร้านและแอดมิน? ประวัติออเดอร์เดิมจะยังอยู่`)) return;
-    setBusy(true);setActionError("");
-    const {error}=await supabase.rpc("admin_hide_catalog_product",{p_product_id:id});
-    if(error) setActionError(error.message);else {await refresh();flash("ซ่อนสินค้าแล้ว (ไม่ลบประวัติออเดอร์)");}
+  async function hide(id: string, label: string) {
+    if (!window.confirm(`ซ่อนสินค้า "${label}" จากหน้าร้านและแอดมิน? ประวัติออเดอร์เดิมจะยังอยู่`)) return;
+    setBusy(true); setActionError("");
+    const { error } = await supabase.rpc("admin_hide_catalog_product", { p_product_id: id });
+    if (error) setActionError(error.message); else { await refresh(); flash("ซ่อนสินค้าแล้ว (ไม่ลบประวัติออเดอร์)"); }
     setBusy(false);
   }
   return <section className="panel catalog-panel">
-    <div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="store" size={16}/> สินค้าพร้อมขาย</span><h2>รสชาติไอศกรีม</h2><p>เชื่อม Supabase products และ product_stock โดยตรง</p></div><button className="primary-action" disabled={busy} onClick={()=>setOpen(!open)}><Icon name={open?"close":"plus"} size={18}/>{open?"ปิด":"เพิ่มรสชาติ"}</button></div>
-    {(error||actionError)&&<p role="alert" style={{color:"#a32727",padding:"12px"}}>เชื่อมต่อสินค้าไม่สำเร็จ: {error||actionError}</p>}
-    {open&&<form className="catalog-form" onSubmit={add}><label><span>ชื่อรสชาติ</span><input value={name} onChange={e=>setName(e.target.value)} minLength={2} required/></label><label><span>ราคาต่อถ้วย</span><input type="number" min="0.01" step="0.01" value={price} onChange={e=>setPrice(e.target.value)} required/></label><label><span>สต็อกเริ่มต้น (ถ้วย)</span><input type="number" min="0" step="1" value={quantity} onChange={e=>setQuantity(e.target.value)} required/></label><button className="primary-action" disabled={busy} type="submit"><Icon name="check" size={17}/> บันทึกลง Supabase</button></form>}
-    {loading&&<p>กำลังโหลดสินค้า...</p>}
-    {!loading&&!error&&products.length===0&&<p>ยังไม่มีสินค้าใน products</p>}
-    <div className="catalog-grid">{products.map(product=><article className="catalog-card" key={product.id}><span className="flavor-color" style={{background:product.color}}/><div><small>ไอศกรีมโฮมเมด</small><h3>{product.name}</h3><b>฿{product.price} / ถ้วย</b></div><div className={`catalog-stock ${product.stock<=5?"low":""}`}><small>คงเหลือ</small><strong>{product.stock}</strong><span>ถ้วย</span></div><div className="stock-buttons"><button disabled={busy} onClick={()=>void adjust(product.id,-1)}><Icon name="minus" size={16}/> ลดสต็อก</button><button disabled={busy} onClick={()=>void adjust(product.id,1)}><Icon name="plus" size={16}/> เพิ่มสต็อก</button><button disabled={busy} className="delete" aria-label={`ซ่อน${product.name}`} onClick={()=>void hide(product.id,product.name)}><Icon name="trash" size={16}/></button></div></article>)}</div>
+    <div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="store" size={16} /> สินค้าพร้อมขาย</span><h2>รสชาติไอศกรีม</h2><p>เชื่อม Supabase products และ product_stock โดยตรง</p></div><button className="primary-action" disabled={busy} onClick={() => setOpen(!open)}><Icon name={open ? "close" : "plus"} size={18} />{open ? "ปิด" : "เพิ่มรสชาติ"}</button></div>
+    {(error || actionError) && <p role="alert" style={{ color: "#a32727", padding: "12px" }}>เชื่อมต่อสินค้าไม่สำเร็จ: {error || actionError}</p>}
+    {open && <form className="catalog-form" onSubmit={add}><label><span>ชื่อรสชาติ</span><input value={name} onChange={e => setName(e.target.value)} minLength={2} required /></label><label><span>ราคาต่อถ้วย</span><input type="number" min="0.01" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required /></label><label><span>สต็อกเริ่มต้น (ถ้วย)</span><input type="number" min="0" step="1" value={quantity} onChange={e => setQuantity(e.target.value)} required /></label><button className="primary-action" disabled={busy} type="submit"><Icon name="check" size={17} /> บันทึกลง Supabase</button></form>}
+    {loading && <p>กำลังโหลดสินค้า...</p>}
+    {!loading && !error && products.length === 0 && <p>ยังไม่มีสินค้าใน products</p>}
+    <div className="catalog-grid">{products.map(product => <article className="catalog-card" key={product.id}><span className="flavor-color" style={{ background: product.color }} /><div><small>ไอศกรีมโฮมเมด</small><h3>{product.name}</h3><b>฿{product.price} / ถ้วย</b></div><div className={`catalog-stock ${product.stock <= 5 ? "low" : ""}`}><small>คงเหลือ</small><strong>{product.stock}</strong><span>ถ้วย</span></div><div className="stock-buttons"><button disabled={busy} onClick={() => void adjust(product.id, -1)}><Icon name="minus" size={16} /> ลดสต็อก</button><button disabled={busy} onClick={() => void adjust(product.id, 1)}><Icon name="plus" size={16} /> เพิ่มสต็อก</button><button disabled={busy} className="delete" aria-label={`ซ่อน${product.name}`} onClick={() => void hide(product.id, product.name)}><Icon name="trash" size={16} /></button></div></article>)}</div>
   </section>;
 }
 
@@ -606,7 +615,7 @@ function IngredientsView({ flash }: { flash: (message: string) => void }) {
   const [category, setCategory] = useState("รายการอื่น ๆ");
   async function load() {
     setLoading(true); setError("");
-    const { data, error } = await supabase.from("ingredients").select("id,name,quantity,unit,minimum,category").eq("is_active",true).order("created_at");
+    const { data, error } = await supabase.from("ingredients").select("id,name,quantity,unit,minimum,category").eq("is_active", true).order("created_at");
     if (error) setError(error.message);
     else setItems((data ?? []).map((row: any) => ({ ...row, quantity: Number(row.quantity), minimum: Number(row.minimum) })));
     setLoading(false);
@@ -634,11 +643,11 @@ function IngredientsView({ flash }: { flash: (message: string) => void }) {
     setBusy(false);
   }
   return <section className="panel ingredient-page"><div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="box" size={16} /> คลังสำหรับผลิต</span><h2>วัตถุดิบทั้งหมด</h2><p>ข้อมูลจาก Supabase ตาราง ingredients — เพิ่ม ลด และซ่อนวัตถุดิบได้</p></div><div className="ingredient-head-actions">{low > 0 && <span className="low-warning">{low} รายการใกล้หมด</span>}<button disabled={busy} className="primary-action" onClick={() => setOpen(!open)}><Icon name={open ? "close" : "plus"} size={17} /> {open ? "ปิด" : "เพิ่มวัตถุดิบ"}</button></div></div>
-    {error && <p role="alert" style={{color:"#a32727",padding:12}}>Supabase: {error}</p>}
-    {open && <form className="ingredient-add-form" onSubmit={add}><label><span>ชื่อวัตถุดิบ</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น อัลมอนด์" minLength={2} required /></label><label><span>จำนวน</span><input type="number" min="0" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required /></label><label><span>หน่วย</span><select value={unit} onChange={(e) => setUnit(e.target.value)}><option>กก.</option><option>กรัม</option><option>ลิตร</option><option>ถุง</option><option>ลูก</option><option>ชุด</option></select></label><label><span>จุดเตือนสต็อก</span><input type="number" min="0" step="1" value={minimum} onChange={e => setMinimum(e.target.value)} required /></label><label><span>ประเภท</span><select value={category} onChange={e=>setCategory(e.target.value)}><option>รายการอื่น ๆ</option><option>ของแห้ง</option><option>ควบคุมความเย็น</option><option>วัตถุดิบสด</option><option>ผลิตภัณฑ์นม</option><option>บรรจุภัณฑ์</option></select></label><button disabled={busy} className="primary-action"><Icon name="check" size={17} /> บันทึก</button></form>}
+    {error && <p role="alert" style={{ color: "#a32727", padding: 12 }}>Supabase: {error}</p>}
+    {open && <form className="ingredient-add-form" onSubmit={add}><label><span>ชื่อวัตถุดิบ</span><input value={name} onChange={(e) => setName(e.target.value)} placeholder="เช่น อัลมอนด์" minLength={2} required /></label><label><span>จำนวน</span><input type="number" min="0" step="1" value={quantity} onChange={(e) => setQuantity(e.target.value)} required /></label><label><span>หน่วย</span><select value={unit} onChange={(e) => setUnit(e.target.value)}><option>กก.</option><option>กรัม</option><option>ลิตร</option><option>ถุง</option><option>ลูก</option><option>ชุด</option></select></label><label><span>จุดเตือนสต็อก</span><input type="number" min="0" step="1" value={minimum} onChange={e => setMinimum(e.target.value)} required /></label><label><span>ประเภท</span><select value={category} onChange={e => setCategory(e.target.value)}><option>รายการอื่น ๆ</option><option>ของแห้ง</option><option>ควบคุมความเย็น</option><option>วัตถุดิบสด</option><option>ผลิตภัณฑ์นม</option><option>บรรจุภัณฑ์</option></select></label><button disabled={busy} className="primary-action"><Icon name="check" size={17} /> บันทึก</button></form>}
     {loading && <p>กำลังโหลดวัตถุดิบ...</p>}
-    {!loading && !error && items.length===0 && <p>ยังไม่มีวัตถุดิบ กดเพิ่มวัตถุดิบเพื่อเริ่มต้น</p>}
-    <div className="ingredient-grid">{items.map((item) => { const isLow = item.quantity <= item.minimum; return <article className={`ingredient-card ${isLow ? "low" : ""}`} key={item.id}><div className="ingredient-card-head"><span><Icon name={item.category === "วัตถุดิบสด" ? "leaf" : "box"} /></span><button disabled={busy} aria-label={`ลบ${item.name}`} onClick={() => void remove(item)}><Icon name="trash" size={17} /></button></div><small>{item.category}</small><h3>{item.name}</h3><div className="ingredient-count"><strong>{item.quantity}</strong><span>{item.unit}</span>{isLow && <em>ควรเติมสต็อก</em>}</div><div className="ingredient-stepper"><button disabled={busy || item.quantity===0} onClick={() => void adjust(item.id,-1)}><Icon name="minus" size={16} /> นำออก</button><button disabled={busy} onClick={() => void adjust(item.id,1)}><Icon name="plus" size={16} /> เพิ่มเข้า</button></div></article>; })}</div>
+    {!loading && !error && items.length === 0 && <p>ยังไม่มีวัตถุดิบ กดเพิ่มวัตถุดิบเพื่อเริ่มต้น</p>}
+    <div className="ingredient-grid">{items.map((item) => { const isLow = item.quantity <= item.minimum; return <article className={`ingredient-card ${isLow ? "low" : ""}`} key={item.id}><div className="ingredient-card-head"><span><Icon name={item.category === "วัตถุดิบสด" ? "leaf" : "box"} /></span><button disabled={busy} aria-label={`ลบ${item.name}`} onClick={() => void remove(item)}><Icon name="trash" size={17} /></button></div><small>{item.category}</small><h3>{item.name}</h3><div className="ingredient-count"><strong>{item.quantity}</strong><span>{item.unit}</span>{isLow && <em>ควรเติมสต็อก</em>}</div><div className="ingredient-stepper"><button disabled={busy || item.quantity === 0} onClick={() => void adjust(item.id, -1)}><Icon name="minus" size={16} /> นำออก</button><button disabled={busy} onClick={() => void adjust(item.id, 1)}><Icon name="plus" size={16} /> เพิ่มเข้า</button></div></article>; })}</div>
   </section>;
 }
 
@@ -657,7 +666,7 @@ function MembersView({ members, setMembers, flash }: {
     setLoading(true); setMemberError("");
     const { data, error } = await supabase.from("customers")
       .select("id,profile_id,is_member,points_balance,phone,profiles!customers_profile_id_fkey(full_name,phone),orders(id,created_at)")
-      .eq("is_member", true).order("created_at", { ascending:false });
+      .eq("is_member", true).order("created_at", { ascending: false });
     if (error) setMemberError(error.message);
     else {
       const mapped: Member[] = (data ?? []).map((c: any) => {
@@ -665,10 +674,10 @@ function MembersView({ members, setMembers, flash }: {
         const orders = c.orders ?? [];
         const latest = orders.reduce((last: string, o: any) => !last || o.created_at > last ? o.created_at : last, "");
         return {
-          id:c.id, name:profile?.full_name || "สมาชิก",
-          phone:c.phone || profile?.phone || "-",
-          points:Number(c.points_balance ?? 0), visits:orders.length,
-          lastPurchase:latest ? new Date(latest).toLocaleDateString("th-TH") : "ยังไม่มีรายการ"
+          id: c.id, name: profile?.full_name || "สมาชิก",
+          phone: c.phone || profile?.phone || "-",
+          points: Number(c.points_balance ?? 0), visits: orders.length,
+          lastPurchase: latest ? new Date(latest).toLocaleDateString("th-TH") : "ยังไม่มีรายการ"
         };
       });
       setMembers(mapped);
@@ -686,7 +695,7 @@ function MembersView({ members, setMembers, flash }: {
     if (!selected || earnedPoints < 1 || busy) return;
     setBusy(true); setMemberError("");
     const { error } = await supabase.rpc("admin_record_customer_purchase", {
-      p_customer_id:selected.id, p_amount:Number(amount)
+      p_customer_id: selected.id, p_amount: Number(amount)
     });
     if (error) setMemberError(error.message);
     else { setAmount(""); await loadMembers(); flash(`เพิ่ม ${earnedPoints} แต้มให้ ${selected.name} แล้ว`); }
@@ -706,8 +715,8 @@ function MembersView({ members, setMembers, flash }: {
             <div><h2>รายชื่อสมาชิก</h2><p>ลูกค้าที่สมัครผ่าน Ordering และมี is_member = true</p></div>
             <button className="primary-action" disabled={loading} onClick={() => void loadMembers()}><Icon name="refresh" size={17} /> รีเฟรช</button>
           </div>
-          {memberError && <p role="alert" style={{color:"#b13c27",padding:12}}>Supabase: {memberError}</p>}
-          {loading && <p style={{padding:12}}>กำลังโหลดสมาชิก...</p>}
+          {memberError && <p role="alert" style={{ color: "#b13c27", padding: 12 }}>Supabase: {memberError}</p>}
+          {loading && <p style={{ padding: 12 }}>กำลังโหลดสมาชิก...</p>}
           <div className="member-search-wrap"><label className="management-search"><Icon name="search" size={18} /><input value={query} onChange={e => setQuery(e.target.value)} placeholder="ค้นหาชื่อหรือเบอร์โทร" /></label></div>
           <div className="member-list">
             {filtered.map(member => <button key={member.id} className={`member-row ${selected?.id === member.id ? "active" : ""}`} onClick={() => setSelectedId(member.id)}>
