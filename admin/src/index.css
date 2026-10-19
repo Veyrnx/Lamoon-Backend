@@ -271,7 +271,19 @@ button:focus-visible, input:focus-visible { outline: 3px solid #b68d59; outline-
 .points-form > label { display: flex; flex-direction: column; gap: 6px; color: #536057; font-size: 9px; font-weight: 700; }
 .purchase-input { position: relative; }
 .purchase-input b { position: absolute; left: 14px; top: 11px; color: #8b765d; font-size: 18px; }
-.purchase-input input { width: 100%; height: 49px; padding: 0 14px 0 37px; border: 1px solid #d5cdbf; border-radius: 11px; outline: 0; color: #3e4e42; background: #faf8f2; font-size: 20px; font-weight: 700; }
+.purchase-input input {
+  width: 100%;
+  box-sizing: border-box;
+  height: 49px;
+  padding: 0 14px 0 37px;
+  border: 1px solid #d5cdbf;
+  border-radius: 11px;
+  outline: 0;
+  color: #3e4e42;
+  background: #faf8f2;
+  font-size: 20px;
+  font-weight: 700;
+}
 .points-calculation { display: grid; grid-template-columns: 1fr 24px 1fr; gap: 8px; align-items: center; margin-top: 13px; padding: 13px; border-radius: 11px; background: #f1eee7; }
 .points-calculation > div { display: flex; flex-direction: column; }
 .points-calculation small { color: #8e938e; font-size: 7px; }

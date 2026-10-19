@@ -1066,8 +1066,7 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [newPromotionMinimum, setNewPromotionMinimum] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
   const [note, setNote] = useState("");
-  const [amount, setAmount] = useState("");
-  const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const [amount, setAmount] = useState(""); const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const formatDate = (date: string) => new Date(date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
   const dayKey = (date: string) => {
     if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
@@ -1599,6 +1598,7 @@ function MembersView({ members, setMembers, flash }: {
   const [query, setQuery] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [amount, setAmount] = useState("");
+  const [pointsMode, setPointsMode] = useState<"add" | "deduct">("add")
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [memberError, setMemberError] = useState("");
@@ -1627,7 +1627,19 @@ function MembersView({ members, setMembers, flash }: {
   }
   useEffect(() => { void loadMembers(); }, []);
   const selected = members.find(member => member.id === selectedId) ?? members[0];
-  const earnedPoints = Math.floor(Math.max(0, Number(amount) || 0) / 10);
+  const enteredPoints = Number(amount) || 0;
+
+  const earnedPoints =
+    Number.isInteger(enteredPoints) && enteredPoints > 0
+      ? enteredPoints
+      : 0;
+
+  const discountBaht = earnedPoints / 2;
+
+  const isValidDeduction =
+    earnedPoints >= 100 &&
+    earnedPoints % 100 === 0 &&
+    earnedPoints <= selected.points;
   const filtered = members.filter(member => `${member.name}${member.phone}`.toLowerCase().includes(query.toLowerCase()));
   const totalPoints = members.reduce((sum, member) => sum + member.points, 0);
   async function addPoints(e: React.FormEvent) {
@@ -1673,11 +1685,96 @@ function MembersView({ members, setMembers, flash }: {
             <div className="points-member-head"><span className="member-avatar large">{selected.name.replace("คุณ", "").trim().slice(0, 1)}</span><div><small>กำลังเพิ่มแต้มให้</small><h2>{selected.name}</h2><p>{selected.phone}</p></div></div>
             <div className="current-points"><span><Icon name="star" /></span><div><small>แต้มคงเหลือปัจจุบัน</small><strong>{selected.points.toLocaleString("th-TH")} <em>แต้ม</em></strong></div></div>
             <form className="points-form" onSubmit={addPoints}>
-              <div className="section-label">บันทึกยอดซื้อหน้าร้าน</div>
-              <label><span>ยอดที่ลูกค้าชำระ</span><div className="purchase-input"><b>฿</b><input type="number" min="0" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0" /></div></label>
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => setPointsMode("add")}
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: pointsMode === "add" ? "#52664d" : "#eee",
+                    color: pointsMode === "add" ? "#fff" : "#333",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  + เพิ่มแต้ม
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setPointsMode("deduct")}
+                  style={{
+                    flex: 1,
+                    padding: 12,
+                    borderRadius: 12,
+                    background: pointsMode === "deduct" ? "#b85c43" : "#eee",
+                    color: pointsMode === "deduct" ? "#fff" : "#333",
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  − หักแต้ม
+                </button>
+              </div>
+              <div className="section-label">
+                {pointsMode === "add" ? "บันทึกยอดซื้อหน้าร้าน" : "ใช้แต้มแลกส่วนลดหน้าร้าน"}
+              </div>
+              <label><span>
+                {pointsMode === "add"
+                  ? "จำนวนแต้มที่ต้องการเพิ่ม"
+                  : "จำนวนแต้มที่ต้องการหัก"}
+              </span>
+                <div
+                  className="purchase-input"
+                  style={{ position: "relative", display: "block" }}
+                >
+                  <input
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={amount}
+                    onChange={e => setAmount(e.target.value)}
+                    placeholder="0"
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      paddingRight: 90,
+                    }}
+                  />
+
+                  <span
+                    style={{
+                      position: "absolute",
+                      right: 38,
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      color: "#52664d",
+                      fontWeight: 600,
+                      pointerEvents: "none",
+                    }}
+                  >
+                    Point
+                  </span>
+                </div></label>
               <div className="points-calculation">
-                <div><small>แต้มที่จะได้รับ</small><strong>{earnedPoints.toLocaleString("th-TH")} <span>แต้ม</span></strong></div><Icon name="arrow" />
-                <div><small>ยอดแต้มหลังบันทึก</small><strong>{(selected.points + earnedPoints).toLocaleString("th-TH")} <span>แต้ม</span></strong></div>
+                <div>
+                  <small>{pointsMode === "add" ? "ยอดซื้อเทียบเท่า" : "ส่วนลดที่ลูกค้าได้รับ"}</small>
+                  <strong>
+                    ฿{(pointsMode === "add" ? earnedPoints * 10 : discountBaht).toLocaleString("th-TH")}
+                  </strong>
+                </div>
+
+                <Icon name="arrow" />
+
+                <div>
+                  <small>ยอดแต้มหลังบันทึก</small>
+                  <strong>
+                    {(selected.points + (pointsMode === "add" ? earnedPoints : -earnedPoints)).toLocaleString("th-TH")}
+                    <span> แต้ม</span>
+                  </strong>
+                </div>
               </div>
               <p className="points-rule"><Icon name="check" size={15} /> ทุกยอดซื้อ 10 บาท รับ 1 แต้ม เศษไม่ครบ 10 บาทไม่สะสม</p>
               <button className="points-submit" type="submit" disabled={earnedPoints < 1 || busy}><Icon name="star" size={18} /> ยืนยันเพิ่ม {earnedPoints.toLocaleString("th-TH")} แต้ม</button>
