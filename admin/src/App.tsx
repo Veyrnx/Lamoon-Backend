@@ -7,9 +7,17 @@ type IconName =
   | "home" | "bag" | "truck" | "calendar" | "plus" | "minus" | "arrow"
   | "check" | "clock" | "box" | "store" | "edit" | "trash" | "close"
   | "card" | "leaf" | "search" | "upload" | "file" | "map" | "phone"
-  | "bell" | "wallet" | "user" | "users" | "star";
+  | "bell" | "wallet" | "gift" | "user" | "users" | "star";
 
 const icons: Record<IconName, React.ReactNode> = {
+  gift: (
+    <>
+      <rect x="3" y="8" width="18" height="13" rx="2" />
+      <path d="M12 8v13M3 12h18" />
+      <path d="M12 8H7.5a2.5 2.5 0 1 1 2.45-3c.7 1.5 2.05 3 2.05 3Z" />
+      <path d="M12 8h4.5a2.5 2.5 0 1 0-2.45-3C13.35 6.5 12 8 12 8Z" />
+    </>
+  ),
   home: <><path d="m3 11 9-8 9 8" /><path d="M5 10v10h14V10M9 20v-6h6v6" /></>,
   bag: <><path d="M5 8h14l-1 13H6L5 8Z" /><path d="M9 10V6a3 3 0 0 1 6 0v4" /></>,
   truck: <><path d="M3 6h11v11H3zM14 10h4l3 4v3h-7z" /><circle cx="7" cy="18" r="2" /><circle cx="18" cy="18" r="2" /></>,
@@ -42,7 +50,7 @@ function Icon({ name, size = 21 }: { name: IconName; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{icons[name]}</svg>;
 }
 
-type View = "orders" | "delivery" | "finance" | "products" | "ingredients" | "members";
+type View = "orders" | "delivery" | "finance" | "promotions" | "products" | "ingredients" | "members";
 type Stage = "new" | "accepted" | "preparing" | "ready" | "shipping" | "delivered" | "cancelled";
 type Order = {
   databaseId?: string; id: string; customer: string; phone: string; address: string; due: string; dueText: string;
@@ -301,6 +309,7 @@ function App() {
           <SideButton icon="bag" label="ออเดอร์ลูกค้า" active={view === "orders"} badge={orders.filter((o) => o.stage === "new").length} onClick={() => setView("orders")} />
           <SideButton icon="truck" label="ตารางจัดส่ง" active={view === "delivery"} onClick={() => setView("delivery")} />
           <SideButton icon="wallet" label="บัญชีการเงิน" active={view === "finance"} onClick={() => setView("finance")} />
+          <SideButton icon="gift" label="จัดการโปรโมชั่น" active={view === "promotions"} onClick={() => setView("promotions")} />
           <SideButton icon="store" label="รสชาติและสต็อก" active={view === "products"} onClick={() => setView("products")} />
           <SideButton icon="box" label="คลังวัตถุดิบ" active={view === "ingredients"} onClick={() => setView("ingredients")} />
           <SideButton icon="users" label="สมาชิกและแต้ม" active={view === "members"} onClick={() => setView("members")} />
@@ -310,7 +319,7 @@ function App() {
 
       <div className="workspace">
         <header className="workspace-head">
-          <div><span className="today">{todayText}</span><h1>{view === "orders" ? "จัดการออเดอร์" : view === "delivery" ? "ตารางจัดส่ง" : view === "finance" ? "บัญชีการเงิน" : view === "products" ? "รสชาติและสต็อก" : view === "ingredients" ? "คลังวัตถุดิบ" : "สมาชิกและแต้ม"}</h1></div>
+          <div><span className="today">{todayText}</span><h1>{view === "orders" ? "จัดการออเดอร์" : view === "delivery" ? "ตารางจัดส่ง" : view === "finance" ? "บัญชีการเงิน" : view === "promotions" ? "จัดการโปรโมชั่น" : view === "products" ? "รสชาติและสต็อก" : view === "ingredients" ? "คลังวัตถุดิบ" : "สมาชิกและแต้ม"}</h1></div>
           <div className="header-actions"><AdminNotifications onOpenOrder={(orderId) => { const match = orders.find((order) => order.databaseId === orderId); setView("orders"); if (match) setSelectedId(match.id); else { setOrdersRevision((value) => value + 1); flash("กำลังเปิดรายการออเดอร์ กรุณาค้นหาออเดอร์ที่เกี่ยวข้อง"); } }} /><div className="header-user">มล</div></div>
         </header>
 
@@ -318,6 +327,7 @@ function App() {
           {view === "orders" && <>{ordersLoading && <p className="panel" style={{ padding: 16 }}>กำลังโหลดออเดอร์จาก Supabase...</p>}{!ordersLoading && orders.length === 0 && <p className="panel" style={{ padding: 16 }}>ยังไม่มีออเดอร์ในฐานข้อมูล หรือบัญชีนี้ยังไม่มีสิทธิ์อ่านข้อมูล</p>}<OrdersView orders={orders} selected={selected} onSelect={setSelectedId} onUpdate={updateOrder} onAccept={acceptOrder} onEdit={editOrder} onCancel={cancelOrder} flash={flash} /></>}
           {view === "delivery" && <DeliveryView orders={orders} onSelect={(id) => { setSelectedId(id); setView("orders"); }} />}
           {view === "finance" && <FinanceView flash={flash} />}
+          {view === "promotions" && <PromotionsView />}
           {view === "products" && <ProductsView products={products} refresh={refreshProducts} loading={productsLoading} error={productsError} flash={flash} />}
           {view === "ingredients" && <IngredientsView flash={flash} />}
           {view === "members" && <MembersView members={members} setMembers={setMembers} flash={flash} />}
@@ -411,39 +421,39 @@ function OrdersView({ orders, selected, onSelect, onUpdate, onAccept, onEdit, on
       <div className="orders-layout">
         <section className="panel order-list-panel">
           <div className="panel-head">
-  <div>
-    <h2>รายการออเดอร์</h2>
-    <p>อัปเดตล่าสุดเมื่อสักครู่</p>
-  </div>
+            <div>
+              <h2>รายการออเดอร์</h2>
+              <p>อัปเดตล่าสุดเมื่อสักครู่</p>
+            </div>
 
-  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-    <input
-      type="date"
-      className="outline-action"
-      value={selectedDate}
-      onChange={(e) => setSelectedDate(e.target.value)}
-      aria-label="เลือกวันที่สั่งซื้อ"
-    />
-    {selectedDate && (
-  <button
-    type="button"
-    className="outline-action"
-    onClick={() => setSelectedDate("")}
-  >
-    กลับ
-  </button>
-)}
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <input
+                type="date"
+                className="outline-action"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                aria-label="เลือกวันที่สั่งซื้อ"
+              />
+              {selectedDate && (
+                <button
+                  type="button"
+                  className="outline-action"
+                  onClick={() => setSelectedDate("")}
+                >
+                  กลับ
+                </button>
+              )}
 
-    <label className="management-search">
-      <Icon name="search" size={18} />
-      <input
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        placeholder="ค้นหาชื่อ เบอร์ หรือเลขออเดอร์"
-      />
-    </label>
-  </div>
-</div>
+              <label className="management-search">
+                <Icon name="search" size={18} />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="ค้นหาชื่อ เบอร์ หรือเลขออเดอร์"
+                />
+              </label>
+            </div>
+          </div>
           <div className="filter-tabs">
             {[["all", "ทั้งหมด"], ["new", "รออนุมัติ"], ["preparing", "กำลังเตรียม"], ["shipping", "กำลังส่ง"], ["delivered", "ส่งสำเร็จ"]].map(([value, label]) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}
           </div>
@@ -609,6 +619,100 @@ function DeliveryView({ orders, onSelect }: { orders: Order[]; onSelect: (id: st
 }
 
 type FinanceEntry = { id: string; date: string; type: "income" | "expense"; category: string; note: string; amount: number; source: string; locked: boolean; dayKey: string };
+function PromotionsView() {
+  const [promotions, setPromotions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  const togglePromotion = async (id: string, isActive: boolean) => {
+    setUpdatingId(id);
+
+    const { data, error: updateError } = await supabase
+      .from("promotions")
+      .update({ is_active: !isActive })
+      .eq("id", id)
+      .select("id, is_active");
+
+    if (updateError || !data || data.length === 0) {
+      alert(`ไม่สามารถเปลี่ยนสถานะโปรโมชั่นได้: ${updateError?.message ?? "ไม่พบรายการที่อัปเดต"}`);
+    } else {
+      setPromotions((previous) =>
+        previous.map((promotion) =>
+          promotion.id === id
+            ? { ...promotion, is_active: data[0].is_active }
+            : promotion
+        )
+      );
+    }
+
+    setUpdatingId(null);
+  };
+  useEffect(() => {
+    const loadPromotions = async () => {
+      setLoading(true);
+      setError("");
+
+      const { data, error: fetchError } = await supabase
+        .from("promotions")
+        .select("*")
+        .order("name", { ascending: true });
+
+      if (fetchError) {
+        setError(fetchError.message);
+      } else {
+        setPromotions(data ?? []);
+      }
+
+      setLoading(false);
+    };
+
+    void loadPromotions();
+  }, []);
+  return (
+    <section className="panel" style={{ padding: "24px" }}>
+      <h2>จัดการโปรโมชั่น</h2>
+      {loading && <p>กำลังโหลดโปรโมชั่น...</p>}
+
+      {error && <p style={{ color: "red" }}>เกิดข้อผิดพลาด: {error}</p>}
+
+      {!loading && !error && promotions.length === 0 && (
+        <p>ยังไม่มีโปรโมชั่นในฐานข้อมูล หรือบัญชีนี้ไม่มีสิทธิ์อ่านข้อมูล</p>
+      )}
+
+      {!loading && !error && promotions.map((promotion) => (
+        <div
+          key={promotion.id}
+          style={{
+            padding: "16px",
+            marginTop: "12px",
+            border: "1px solid #e5e7eb",
+            borderRadius: "12px",
+          }}
+        >
+          <h3>{promotion.name}</h3>
+          <p>รหัสส่วนลด: {promotion.code}</p>
+          <p>ส่วนลด: ฿{Number(promotion.value).toLocaleString("th-TH")}</p>
+          <p>ยอดสั่งซื้อขั้นต่ำ: ฿{Number(promotion.minimum_order_amount).toLocaleString("th-TH")}</p>
+          <p>สถานะ: {promotion.is_active ? "🟢 เปิดใช้งาน" : "🔴 ปิดใช้งาน"}</p>
+          <button
+            type="button"
+            className="outline-action"
+            disabled={updatingId === promotion.id}
+            onClick={() => void togglePromotion(promotion.id, promotion.is_active)}
+          >
+            {updatingId === promotion.id
+              ? "กำลังบันทึก..."
+              : promotion.is_active
+                ? "ปิดใช้งาน"
+                : "เปิดใช้งาน"}
+          </button>
+        </div>
+      ))}
+    </section>
+  );
+}
+
 function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
   const [period, setPeriod] = useState<0 | 1 | 3 | 6>(0);
