@@ -490,6 +490,8 @@ function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { o
 }
 
 function DeliveryView({ orders, onSelect }: { orders: Order[]; onSelect: (id: string) => void }) {
+  const [selectedDate, setSelectedDate] = useState("");
+
   return (
     <section className="panel delivery-panel">
       <div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="calendar" size={16} /> แผนงานจัดส่ง</span><h2>ออเดอร์ที่ต้องส่ง</h2><p>เรียงตามออเดอร์ที่ใกล้ถึงกำหนดที่สุด</p></div><button className="outline-action"><Icon name="calendar" size={18} /> ดูแบบปฏิทิน</button></div>
@@ -522,15 +524,15 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [amount, setAmount] = useState("");
   const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const formatDate = (date: string) => new Date(date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
-const dayKey = (date: string) => {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    return date;
-  }
+  const dayKey = (date: string) => {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return date;
+    }
 
-  return new Date(date).toLocaleDateString("en-CA", {
-    timeZone: "Asia/Bangkok",
-  });
-};  const [entryDate, setEntryDate] = useState(
+    return new Date(date).toLocaleDateString("en-CA", {
+      timeZone: "Asia/Bangkok",
+    });
+  }; const [entryDate, setEntryDate] = useState(
     new Date().toLocaleDateString("en-CA", {
       timeZone: "Asia/Bangkok",
     })
@@ -563,24 +565,24 @@ const dayKey = (date: string) => {
 
 
   // แปลงวันที่เป็น YYYY-MM-DD ตามเวลาไทย
-const thaiKey = (date: Date) =>
-  date.toLocaleDateString("en-CA", {
-    timeZone: "Asia/Bangkok",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
+  const thaiKey = (date: Date) =>
+    date.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
   // กรองรายการบัญชีตามช่วงเวลาหรือวันที่ที่เลือก
- const filteredEntries = entries.filter((entry) => {
-  if (selectedDate) {
-    return entry.dayKey === selectedDate;
-  }
+  const filteredEntries = entries.filter((entry) => {
+    if (selectedDate) {
+      return entry.dayKey === selectedDate;
+    }
 
-  return (
-    entry.dayKey >= thaiKey(startDate) &&
-    entry.dayKey <= thaiKey(today)
-  );
-});
+    return (
+      entry.dayKey >= thaiKey(startDate) &&
+      entry.dayKey <= thaiKey(today)
+    );
+  });
   const income = filteredEntries
     .filter(e => e.type === "income")
     .reduce((sum, e) => sum + e.amount, 0);
@@ -657,7 +659,7 @@ const thaiKey = (date: Date) =>
   } else if (period === 0) {
     // 7 วันล่าสุด: แสดงรายวัน
     for (let i = 6; i >= 0; i--) {
-      const date = new Date();
+      const date = new Date(today);
       date.setDate(date.getDate() - i);
 
       const key = thaiKey(date);
@@ -849,7 +851,7 @@ const thaiKey = (date: Date) =>
           <input
             type="date"
             value={selectedDate}
-            onChange={(e) => setPeriod(Number(e.target.value) as 0 | 1 | 3 | 6)}
+            onChange={(e) => setSelectedDate(e.target.value)} 
             style={{
               padding: "11px 14px",
               border: "1px solid #D9CDBD",
@@ -864,6 +866,7 @@ const thaiKey = (date: Date) =>
             onClick={() => {
               setShowCalendar(false);
               setSelectedDate("");
+              setPeriod(0);
             }}
             style={{
               border: "none",
@@ -928,35 +931,35 @@ const thaiKey = (date: Date) =>
     <section className="panel finance-table-panel"><div className="page-section-head"><div><h2>ตารางบัญชี</h2><p>ยอดขายมาจากออเดอร์ที่ชำระแล้ว · รายจ่ายและรายรับอื่นเพิ่มได้เอง</p></div><div className="finance-actions"><button className="outline-action" onClick={() => void load()} disabled={busy || loading}>รีเฟรชข้อมูล</button><button className="primary-action" onClick={() => setFormOpen(!formOpen)} disabled={busy}><Icon name={formOpen ? "close" : "plus"} size={17} />{formOpen ? "ปิด" : "เพิ่มรายการ"}</button></div></div>
       {formOpen && <form className="finance-form" onSubmit={e => void addEntry(e)}><div className="type-toggle"><button type="button" className={type === "income" ? "active" : ""} onClick={() => setType("income")}>รายรับ</button><button type="button" className={type === "expense" ? "active expense" : ""} onClick={() => setType("expense")}>รายจ่าย</button></div>
         <div style={{ display: "flex", gap: "12px", alignItems: "end" }}>
-  <label style={{ width: "170px", flexShrink: 0 }}>
-    <span>วันที่ทำรายการ</span>
-    <input
-      type="date"
-      value={entryDate}
-      onChange={(e) => setEntryDate(e.target.value)}
-      style={{ width: "100%", boxSizing: "border-box" }}
-      required
-    />
-  </label>
+          <label style={{ width: "170px", flexShrink: 0 }}>
+            <span>วันที่ทำรายการ</span>
+            <input
+              type="date"
+              value={entryDate}
+              onChange={(e) => setEntryDate(e.target.value)}
+              style={{ width: "100%", boxSizing: "border-box" }}
+              required
+            />
+          </label>
 
-  <label style={{ flex: 1, minWidth: 0 }}>
-    <span>รายละเอียด</span>
-    <input
-      value={note}
-      onChange={(e) => setNote(e.target.value)}
-      placeholder="เช่น ซื้อวัตถุดิบเพิ่ม"
-      required
-    />
-  </label>
-</div><label><span>จำนวนเงิน</span><input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required /></label>
+          <label style={{ flex: 1, minWidth: 0 }}>
+            <span>รายละเอียด</span>
+            <input
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="เช่น ซื้อวัตถุดิบเพิ่ม"
+              required
+            />
+          </label>
+        </div><label><span>จำนวนเงิน</span><input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required /></label>
         <button className="primary-action" type="submit" disabled={busy}><Icon name="check" size={17} />บันทึกลง Supabase</button></form>}
       <div className="account-table"><div className="table-head"><span>วันที่</span><span>ประเภท</span><span>รายละเอียด</span><span>แหล่งข้อมูล</span><span>จำนวนเงิน</span><span /></div>
         {filteredEntries.map(entry => <div className="account-row" key={entry.id}><span>{entry.date}</span><span className={`entry-type ${entry.type}`}>{entry.type === "income" ? "รายรับ" : "รายจ่าย"}</span><div><b>{entry.category}</b><small>{entry.note}</small></div><span className="source-tag"><Icon name={entry.locked ? "bag" : "edit"} size={14} />{entry.source}</span><strong className={entry.type}>{entry.type === "income" ? "+" : "−"}฿{money(entry.amount)}</strong>{entry.locked ? <span title="รายการออเดอร์แก้ไขจากหน้าบัญชีไม่ได้">—</span> : <button disabled={busy} aria-label="ลบรายการ" onClick={() => void removeEntry(entry)}><Icon name="trash" size={17} /></button>}</div>)}
-{!loading && filteredEntries.length === 0 && (
-  <p style={{ padding: 16 }}>
-    ไม่มีรายการบัญชีในช่วงเวลาที่เลือก
-  </p>
-)}      </div>
+        {!loading && filteredEntries.length === 0 && (
+          <p style={{ padding: 16 }}>
+            ไม่มีรายการบัญชีในช่วงเวลาที่เลือก
+          </p>
+        )}      </div>
     </section>
   </>;
 }
