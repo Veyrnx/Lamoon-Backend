@@ -48,6 +48,8 @@ type Order = {
   databaseId?: string; id: string; customer: string; phone: string; address: string; due: string; dueText: string;
   items: { name: string; qty: number }[]; total: number; paid: boolean; payment: string;
   slip?: string; stage: Stage; leadDays?: number; source: string;
+  deliveryDate?: string;
+  orderDate?: string;
 };
 
 const stageLabels: Record<Stage, string> = {
@@ -157,6 +159,13 @@ function App() {
           const due = delivery && !Number.isNaN(delivery.getTime())
             ? delivery.toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "numeric" })
             : "ยังไม่กำหนด";
+          const deliveryDateForFilter = delivery && !Number.isNaN(delivery.getTime())
+            ? [
+              delivery.getFullYear(),
+              String(delivery.getMonth() + 1).padStart(2, "0"),
+              String(delivery.getDate()).padStart(2, "0"),
+            ].join("-")
+            : undefined;
           return {
             id: row.order_number || row.id,
             databaseId: row.id,
@@ -164,6 +173,10 @@ function App() {
             phone: customer?.phone?.trim() || profile?.phone?.trim() || "ไม่ได้ระบุ",
             address: row.delivery_address || "รับสินค้าที่ร้าน",
             due,
+            deliveryDate: deliveryDateForFilter,
+            orderDate: row.order_date
+              ? String(row.order_date).slice(0, 10)
+              : undefined,
             dueText: delivery ? (delivery.getTime() < Date.now() ? "เลยกำหนดส่ง" : "กำหนดส่งตามวันที่ระบุ") : "ยังไม่กำหนดวันส่ง",
             items: (row.order_items ?? []).map((item: any) => {
               const flavor = item.item_options?.flavor;
@@ -380,7 +393,13 @@ function OrdersView({ orders, selected, onSelect, onUpdate, onAccept, onEdit, on
 }) {
   const [filter, setFilter] = useState("all");
   const [query, setQuery] = useState("");
-  const filtered = orders.filter((order) => (filter === "all" || order.stage === filter) && (`${order.id}${order.customer}${order.phone}`).includes(query));
+  const [selectedDate, setSelectedDate] = useState("");
+  const filtered = orders.filter(
+    (order) =>
+      (filter === "all" || order.stage === filter) &&
+      `${order.id}${order.customer}${order.phone}`.includes(query) &&
+      (!selectedDate || order.orderDate === selectedDate)
+  );
   return (
     <>
       <div className="overview-grid">
@@ -392,9 +411,39 @@ function OrdersView({ orders, selected, onSelect, onUpdate, onAccept, onEdit, on
       <div className="orders-layout">
         <section className="panel order-list-panel">
           <div className="panel-head">
-            <div><h2>รายการออเดอร์</h2><p>อัปเดตล่าสุดเมื่อสักครู่</p></div>
-            <label className="management-search"><Icon name="search" size={18} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ค้นหาชื่อ เบอร์ หรือเลขออเดอร์" /></label>
-          </div>
+  <div>
+    <h2>รายการออเดอร์</h2>
+    <p>อัปเดตล่าสุดเมื่อสักครู่</p>
+  </div>
+
+  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+    <input
+      type="date"
+      className="outline-action"
+      value={selectedDate}
+      onChange={(e) => setSelectedDate(e.target.value)}
+      aria-label="เลือกวันที่สั่งซื้อ"
+    />
+    {selectedDate && (
+  <button
+    type="button"
+    className="outline-action"
+    onClick={() => setSelectedDate("")}
+  >
+    กลับ
+  </button>
+)}
+
+    <label className="management-search">
+      <Icon name="search" size={18} />
+      <input
+        value={query}
+        onChange={(e) => setQuery(e.target.value)}
+        placeholder="ค้นหาชื่อ เบอร์ หรือเลขออเดอร์"
+      />
+    </label>
+  </div>
+</div>
           <div className="filter-tabs">
             {[["all", "ทั้งหมด"], ["new", "รออนุมัติ"], ["preparing", "กำลังเตรียม"], ["shipping", "กำลังส่ง"], ["delivered", "ส่งสำเร็จ"]].map(([value, label]) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}
           </div>
@@ -491,13 +540,56 @@ function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { o
 
 function DeliveryView({ orders, onSelect }: { orders: Order[]; onSelect: (id: string) => void }) {
   const [selectedDate, setSelectedDate] = useState("");
-
+  const [showCalendar, setShowCalendar] = useState(false);
+  const filteredOrders = orders.filter(
+    (order) =>
+      order.stage !== "delivered" &&
+      (!selectedDate || order.deliveryDate === selectedDate)
+  );
   return (
     <section className="panel delivery-panel">
-      <div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="calendar" size={16} /> แผนงานจัดส่ง</span><h2>ออเดอร์ที่ต้องส่ง</h2><p>เรียงตามออเดอร์ที่ใกล้ถึงกำหนดที่สุด</p></div><button className="outline-action"><Icon name="calendar" size={18} /> ดูแบบปฏิทิน</button></div>
+      <div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="calendar" size={16} /> แผนงานจัดส่ง</span><h2>ออเดอร์ที่ต้องส่ง</h2><p>เรียงตามออเดอร์ที่ใกล้ถึงกำหนดที่สุด</p></div>
+        {!showCalendar ? (
+          <button
+            type="button"
+            className="outline-action"
+            onClick={() => setShowCalendar(true)}
+          >
+            <Icon name="calendar" size={18} />
+            ดูแบบปฏิทิน
+          </button>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+            <input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              style={{
+                padding: "11px 14px",
+                border: "1px solid #D9CDBD",
+                borderRadius: "10px",
+                background: "#FFFDF8",
+                color: "#4E3728",
+              }}
+            />
+
+            <button
+              type="button"
+              className="outline-action"
+              onClick={() => {
+                setShowCalendar(false);
+                setSelectedDate("");
+              }}
+            >
+              กลับ
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="delivery-table">
         <div className="table-head"><span>กำหนดส่ง</span><span>ลูกค้าและที่อยู่</span><span>การชำระเงิน</span><span>สถานะ</span><span /></div>
-        {orders.filter((o) => o.stage !== "delivered").map((order) => <div className="delivery-row" key={order.id}>
+        {filteredOrders.map((order) => <div className="delivery-row" key={order.id}>
           <div className="delivery-date"><b>{order.due}</b><small className={order.dueText.includes("เลย") ? "late" : ""}>{order.dueText}</small></div>
           <div className="delivery-customer"><b>{order.customer}</b><small>{order.address}</small><span><Icon name="phone" size={14} /> {order.phone}</span></div>
           <div><span className={`pay-tag ${order.paid ? "paid" : ""}`}>{order.paid ? order.payment : "ยังไม่ชำระ"}</span></div>
@@ -505,6 +597,13 @@ function DeliveryView({ orders, onSelect }: { orders: Order[]; onSelect: (id: st
           <button className="row-action" onClick={() => onSelect(order.id)}>ดูรายละเอียด <Icon name="arrow" size={17} /></button>
         </div>)}
       </div>
+      {filteredOrders.length === 0 && (
+        <p style={{ padding: "20px", textAlign: "center", color: "#8B7765" }}>
+          {selectedDate
+            ? "ไม่มีออเดอร์ที่ต้องจัดส่งในวันที่เลือก"
+            : "ไม่มีออเดอร์ที่รอจัดส่ง"}
+        </p>
+      )}
     </section>
   );
 }
@@ -851,7 +950,7 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
           <input
             type="date"
             value={selectedDate}
-            onChange={(e) => setSelectedDate(e.target.value)} 
+            onChange={(e) => setSelectedDate(e.target.value)}
             style={{
               padding: "11px 14px",
               border: "1px solid #D9CDBD",
@@ -1052,6 +1151,7 @@ function MembersView({ members, setMembers, flash }: {
 }) {
   const [selectedId, setSelectedId] = useState("");
   const [query, setQuery] = useState("");
+  const [selectedDate, setSelectedDate] = useState("");
   const [amount, setAmount] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
