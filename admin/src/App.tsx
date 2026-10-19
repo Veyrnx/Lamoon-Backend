@@ -1599,6 +1599,10 @@ function MembersView({ members, setMembers, flash }: {
   const [selectedDate, setSelectedDate] = useState("");
   const [amount, setAmount] = useState("");
   const [pointsMode, setPointsMode] = useState<"add" | "deduct">("add")
+  const [showPointsCorrection, setShowPointsCorrection] = useState(false);
+  const [correctionMode, setCorrectionMode] = useState<"add" | "subtract">("subtract");
+  const [correctionPoints, setCorrectionPoints] = useState("");
+  const [correctionReason, setCorrectionReason] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [memberError, setMemberError] = useState("");
@@ -1637,20 +1641,101 @@ function MembersView({ members, setMembers, flash }: {
   const discountBaht = earnedPoints / 2;
 
   const isValidDeduction =
-    earnedPoints >= 100 &&
-    earnedPoints % 100 === 0 &&
+    earnedPoints >= 20 &&
+    earnedPoints % 2 === 0 &&
     earnedPoints <= selected.points;
   const filtered = members.filter(member => `${member.name}${member.phone}`.toLowerCase().includes(query.toLowerCase()));
   const totalPoints = members.reduce((sum, member) => sum + member.points, 0);
   async function addPoints(e: React.FormEvent) {
     e.preventDefault();
-    if (!selected || earnedPoints < 1 || busy) return;
-    setBusy(true); setMemberError("");
-    const { error } = await supabase.rpc("admin_record_customer_purchase", {
-      p_customer_id: selected.id, p_amount: Number(amount)
+
+    if (!selected || busy) return;
+
+    if (earnedPoints < 1) {
+      setMemberError("กรุณากรอกจำนวนแต้มที่ถูกต้อง");
+      return;
+    }
+
+    if (pointsMode === "deduct" && !isValidDeduction) {
+      setMemberError("ใช้แต้มขั้นต่ำ 20 แต้ม ต้องเป็นจำนวนคู่ และห้ามเกินแต้มคงเหลือ");
+      return;
+    }
+
+    setBusy(true);
+    setMemberError("");
+
+    const { error } = await supabase.rpc("admin_manage_customer_points", {
+      p_customer_id: selected.id,
+      p_points: earnedPoints,
+      p_action: pointsMode === "add" ? "add" : "redeem",
     });
-    if (error) setMemberError(error.message);
-    else { setAmount(""); await loadMembers(); flash(`เพิ่ม ${earnedPoints} แต้มให้ ${selected.name} แล้ว`); }
+
+    if (error) {
+      setMemberError(error.message);
+    } else {
+      setAmount("");
+      await loadMembers();
+
+      flash(
+        `${pointsMode === "add" ? "เพิ่ม" : "หัก"} ${earnedPoints} แต้ม ${pointsMode === "add" ? "ให้" : "จาก"
+        } ${selected.name} แล้ว`
+      );
+    }
+
+    setBusy(false);
+  }
+  async function savePointsCorrection() {
+    if (!selected || busy) return;
+
+    const points = Number(correctionPoints);
+    const reason = correctionReason.trim();
+
+    if (!Number.isInteger(points) || points < 1) {
+      setMemberError("กรุณากรอกจำนวนแต้มเป็นจำนวนเต็มตั้งแต่ 1 แต้มขึ้นไป");
+      return;
+    }
+
+    if (reason.length < 3 || reason.length > 500) {
+      setMemberError("กรุณาระบุเหตุผล 3–500 ตัวอักษร");
+      return;
+    }
+
+    if (correctionMode === "subtract" && points > selected.points) {
+      setMemberError("ไม่สามารถหักแต้มเกินยอดคงเหลือได้");
+      return;
+    }
+
+    const actionText =
+      correctionMode === "add" ? "เพิ่มคืน" : "หักออก";
+
+    const confirmed = window.confirm(
+      `ยืนยันแก้ไขแต้มของ ${selected.name}?\n\n` +
+      `${actionText} ${points} แต้ม\n` +
+      `เหตุผล: ${reason}`
+    );
+
+    if (!confirmed) return;
+
+    setBusy(true);
+    setMemberError("");
+
+    const { error } = await supabase.rpc("admin_adjust_customer_points", {
+      p_customer_id: selected.id,
+      p_points: points,
+      p_action: correctionMode,
+      p_reason: reason,
+    });
+
+    if (error) {
+      setMemberError(error.message);
+    } else {
+      setCorrectionPoints("");
+      setCorrectionReason("");
+      setShowPointsCorrection(false);
+      await loadMembers();
+      flash(`แก้ไขแต้มของ ${selected.name} เรียบร้อยแล้ว`);
+    }
+
     setBusy(false);
   }
   return (
@@ -1718,6 +1803,133 @@ function MembersView({ members, setMembers, flash }: {
                   − หักแต้ม
                 </button>
               </div>
+              <div style={{ marginTop: 16, marginBottom: 16 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowPointsCorrection(!showPointsCorrection)}
+                  style={{
+                    width: "100%",
+                    padding: 12,
+                    borderRadius: 12,
+                    border: "1px solid #d5cdbf",
+                    background: "#faf8f2",
+                    color: "#52664d",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✎ แก้ไขแต้มผิดพลาด {showPointsCorrection ? "⌃" : "⌄"}
+                </button>
+
+                {showPointsCorrection && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 16,
+                      border: "1px solid #d5cdbf",
+                      borderRadius: 12,
+                      background: "#faf8f2",
+                    }}
+                  >
+                    <strong>แก้ไขแต้มที่บันทึกผิด</strong>
+                    <p style={{ fontSize: 13, color: "#8b765d" }}>
+                      ใช้เฉพาะกรณีพนักงานเพิ่มหรือหักแต้มผิด
+                      ไม่เกี่ยวกับการแลกส่วนลด
+                    </p>
+                    <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+                      <button
+                        type="button"
+                        onClick={() => setCorrectionMode("add")}
+                        style={{
+                          flex: 1,
+                          padding: 10,
+                          borderRadius: 10,
+                          border: "1px solid #d5cdbf",
+                          background: correctionMode === "add" ? "#52664d" : "#fff",
+                          color: correctionMode === "add" ? "#fff" : "#52664d",
+                          cursor: "pointer",
+                        }}
+                      >
+                        + เพิ่มแต้มคืน
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setCorrectionMode("subtract")}
+                        style={{
+                          flex: 1,
+                          padding: 10,
+                          borderRadius: 10,
+                          border: "1px solid #d5cdbf",
+                          background: correctionMode === "subtract" ? "#b85c43" : "#fff",
+                          color: correctionMode === "subtract" ? "#fff" : "#52664d",
+                          cursor: "pointer",
+                        }}
+                      >
+                        − หักแต้มที่เพิ่มผิด
+                      </button>
+                    </div>
+
+                    <label style={{ display: "block", marginTop: 14 }}>
+                      <span>จำนวนแต้มที่ต้องการแก้ไข</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={correctionPoints}
+                        onChange={e => setCorrectionPoints(e.target.value)}
+                        placeholder="เช่น 11"
+                        style={{
+                          width: "100%",
+                          boxSizing: "border-box",
+                          padding: 12,
+                          marginTop: 6,
+                          border: "1px solid #d5cdbf",
+                          borderRadius: 10,
+                        }}
+                      />
+                    </label>
+
+                    <label style={{ display: "block", marginTop: 14 }}>
+                      <span>เหตุผลที่แก้ไขแต้ม</span>
+                      <textarea
+                        value={correctionReason}
+                        onChange={e => setCorrectionReason(e.target.value)}
+                        placeholder="เช่น เพิ่มแต้มผิดให้ลูกค้าคนนี้"
+                        rows={3}
+                        style={{
+                          width: "100%",
+                          boxSizing: "border-box",
+                          padding: 12,
+                          marginTop: 6,
+                          border: "1px solid #d5cdbf",
+                          borderRadius: 10,
+                          resize: "vertical",
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      onClick={savePointsCorrection}
+                      disabled={busy}
+                      style={{
+                        width: "100%",
+                        marginTop: 16,
+                        padding: 13,
+                        border: "none",
+                        borderRadius: 12,
+                        background: "#52664d",
+                        color: "#fff",
+                        fontWeight: 700,
+                        cursor: busy ? "not-allowed" : "pointer",
+                        opacity: busy ? 0.6 : 1,
+                      }}
+                    >
+                      {busy ? "กำลังบันทึก..." : "ยืนยันแก้ไขแต้ม"}
+                    </button>
+                  </div>
+                )}
+              </div>
               <div className="section-label">
                 {pointsMode === "add" ? "บันทึกยอดซื้อหน้าร้าน" : "ใช้แต้มแลกส่วนลดหน้าร้าน"}
               </div>
@@ -1760,7 +1972,7 @@ function MembersView({ members, setMembers, flash }: {
                 </div></label>
               <div className="points-calculation">
                 <div>
-                  <small>{pointsMode === "add" ? "ยอดซื้อเทียบเท่า" : "ส่วนลดที่ลูกค้าได้รับ"}</small>
+                  <small>{pointsMode === "add" ? "ยอดซื้อเทียบเท่า" : "มูลค่าส่วนลดที่แลกได้"}</small>
                   <strong>
                     ฿{(pointsMode === "add" ? earnedPoints * 10 : discountBaht).toLocaleString("th-TH")}
                   </strong>
@@ -1777,7 +1989,12 @@ function MembersView({ members, setMembers, flash }: {
                 </div>
               </div>
               <p className="points-rule"><Icon name="check" size={15} /> ทุกยอดซื้อ 10 บาท รับ 1 แต้ม เศษไม่ครบ 10 บาทไม่สะสม</p>
-              <button className="points-submit" type="submit" disabled={earnedPoints < 1 || busy}><Icon name="star" size={18} /> ยืนยันเพิ่ม {earnedPoints.toLocaleString("th-TH")} แต้ม</button>
+              <button className="points-submit" type="submit" disabled={
+                busy ||
+                (pointsMode === "add"
+                  ? earnedPoints < 1
+                  : !isValidDeduction)
+              }><Icon name="star" size={18} /> ยืนยัน{pointsMode === "add" ? "เพิ่ม" : "หัก"} {earnedPoints.toLocaleString("th-TH")} แต้ม</button>
             </form>
             <div className="member-history"><span>ใช้บริการล่าสุด</span><b>{selected.lastPurchase}</b></div>
           </> : <div className="member-empty">ยังไม่มีสมาชิกในระบบ</div>}
