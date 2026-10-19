@@ -258,7 +258,7 @@ function App() {
     });
     if (error) { flash(`ยกเลิกไม่สำเร็จ: ${error.message}`); return false; }
     setOrdersRevision(v => v + 1);
-    flash("ยกเลิกออเดอร์แล้ว และคืนสต็อกถ้วยที่เคยตัด (ถ้ามี)");
+    flash("ยกเลิกออเดอร์แล้ว และคืนสต็อกกล่องที่เคยตัด (ถ้ามี)");
     return true;
   }
   async function acceptOrder(id: string, days: number) {
@@ -435,7 +435,7 @@ function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { o
   async function saveEdit() { setSaving(true); const ok = await onEdit(order.id, address, lines.map(l => ({ id: l.id, quantity: l.quantity }))); if (ok) setEditing(false); setSaving(false); }
   async function doCancel() {
     if (!reason.trim()) { flash("กรุณาระบุเหตุผลการยกเลิก"); return; }
-    if (!window.confirm(`ยืนยันยกเลิกออเดอร์ ${order.id}? การยกเลิกจะคืนสต็อกถ้วยที่ตัดแล้ว และไม่สามารถย้อนกลับจากหน้านี้ได้`)) return;
+    if (!window.confirm(`ยืนยันยกเลิกออเดอร์ ${order.id}? การยกเลิกจะคืนสต็อกกล่องที่ตัดแล้ว และไม่สามารถย้อนกลับจากหน้านี้ได้`)) return;
     setSaving(true); await onCancel(order.id, reason.trim()); setSaving(false);
   }
   const [leadDays, setLeadDays] = useState(order.leadDays ?? 2);
@@ -477,7 +477,7 @@ function OrderDetail({ order, onUpdate, onAccept, onEdit, onCancel, flash }: { o
         {order.paid && order.stage !== "cancelled" && <small>ออเดอร์ที่ชำระแล้วต้องจัดการคืนเงินก่อนยกเลิก</small>}
       </div>
       {order.stage === "new" ? (
-        <div className="approval-box">{isTubOrder ? <><div style={{ display: "grid", gap: 6, marginBottom: 12 }}><b>วันจัดส่งที่ลูกค้าเลือก</b><span>{order.due}</span><small>ออเดอร์แบบถังใช้วันจัดส่งที่ลูกค้าเลือกไว้ ไม่ต้องกำหนดระยะเวลาเตรียมและจัดส่งใหม่</small></div></> : <><label><span>ระยะเวลาเตรียมและจัดส่ง</span><select value={leadDays} onChange={(e) => setLeadDays(Number(e.target.value))}>{[1, 2, 3, 4, 5, 7].map((day) => <option key={day} value={day}>{day} วัน</option>)}</select></label><p>ระบบจะแจ้งวันส่งโดยประมาณให้ลูกค้าทราบ · ถ้วยธรรมดาตัดสต็อกอัตโนมัติ</p></>}<button onClick={() => onAccept(order.id, leadDays)}><Icon name="check" /> อนุมัติออเดอร์</button></div>
+        <div className="approval-box">{isTubOrder ? <><div style={{ display: "grid", gap: 6, marginBottom: 12 }}><b>วันจัดส่งที่ลูกค้าเลือก</b><span>{order.due}</span><small>ออเดอร์แบบถังใช้วันจัดส่งที่ลูกค้าเลือกไว้ ไม่ต้องกำหนดระยะเวลาเตรียมและจัดส่งใหม่</small></div></> : <><label><span>ระยะเวลาเตรียมและจัดส่ง</span><select value={leadDays} onChange={(e) => setLeadDays(Number(e.target.value))}>{[1, 2, 3, 4, 5, 7].map((day) => <option key={day} value={day}>{day} วัน</option>)}</select></label><p>ระบบจะแจ้งวันส่งโดยประมาณให้ลูกค้าทราบ · กล่องธรรมดาตัดสต็อกอัตโนมัติ</p></>}<button onClick={() => onAccept(order.id, leadDays)}><Icon name="check" /> อนุมัติออเดอร์</button></div>
       ) : (
         <div className="workflow">
           <div className="section-label">ขั้นตอนการจัดส่ง</div>
@@ -510,6 +510,9 @@ function DeliveryView({ orders, onSelect }: { orders: Order[]; onSelect: (id: st
 type FinanceEntry = { id: string; date: string; type: "income" | "expense"; category: string; note: string; amount: number; source: string; locked: boolean; dayKey: string };
 function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [entries, setEntries] = useState<FinanceEntry[]>([]);
+  const [period, setPeriod] = useState<0 | 1 | 3 | 6>(0);
+  const [selectedDate, setSelectedDate] = useState("");
+  const [showCalendar, setShowCalendar] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -519,7 +522,19 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [amount, setAmount] = useState("");
   const money = (n: number) => n.toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const formatDate = (date: string) => new Date(date).toLocaleDateString("th-TH", { day: "numeric", month: "short", year: "2-digit" });
-  const dayKey = (date: string) => new Date(date).toLocaleDateString("en-CA", { timeZone: "Asia/Bangkok" });
+const dayKey = (date: string) => {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return date;
+  }
+
+  return new Date(date).toLocaleDateString("en-CA", {
+    timeZone: "Asia/Bangkok",
+  });
+};  const [entryDate, setEntryDate] = useState(
+    new Date().toLocaleDateString("en-CA", {
+      timeZone: "Asia/Bangkok",
+    })
+  );
   async function load() {
     setLoading(true); setError("");
     const [manual, orders] = await Promise.all([
@@ -533,14 +548,217 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
     setLoading(false);
   }
   useEffect(() => { void load(); }, []);
-  const income = entries.filter(e => e.type === "income").reduce((s, e) => s + e.amount, 0);
-  const expense = entries.filter(e => e.type === "expense").reduce((s, e) => s + e.amount, 0);
-  const last7 = Array.from({ length: 7 }, (_, i) => { const d = new Date(); d.setDate(d.getDate() - (6 - i)); const key = dayKey(d.toISOString()); return { key, label: d.toLocaleDateString("th-TH", { weekday: "short" }), income: entries.filter(e => e.dayKey === key && e.type === "income").reduce((a, e) => a + e.amount, 0), expense: entries.filter(e => e.dayKey === key && e.type === "expense").reduce((a, e) => a + e.amount, 0) }; });
-  const maxBar = Math.max(1, ...last7.flatMap(d => [d.income, d.expense]));
+  // กำหนดช่วงวันที่ย้อนหลังตาม Dropdown
+  const today = new Date();
+
+  const startDate = new Date(today);
+
+  if (period === 0) {
+    startDate.setDate(startDate.getDate() - 6);
+  } else {
+    startDate.setMonth(startDate.getMonth() - period);
+  }
+
+  startDate.setHours(0, 0, 0, 0);
+
+
+  // แปลงวันที่เป็น YYYY-MM-DD ตามเวลาไทย
+const thaiKey = (date: Date) =>
+  date.toLocaleDateString("en-CA", {
+    timeZone: "Asia/Bangkok",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  // กรองรายการบัญชีตามช่วงเวลาหรือวันที่ที่เลือก
+ const filteredEntries = entries.filter((entry) => {
+  if (selectedDate) {
+    return entry.dayKey === selectedDate;
+  }
+
+  return (
+    entry.dayKey >= thaiKey(startDate) &&
+    entry.dayKey <= thaiKey(today)
+  );
+});
+  const income = filteredEntries
+    .filter(e => e.type === "income")
+    .reduce((sum, e) => sum + e.amount, 0);
+
+  const expense = filteredEntries
+    .filter(e => e.type === "expense")
+    .reduce((sum, e) => sum + e.amount, 0);
+  // กำหนดวันที่ปัจจุบันตามเวลาไทย
+  const getThaiDateKey = (date: Date) =>
+    date.toLocaleDateString("en-CA", {
+      timeZone: "Asia/Bangkok",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+
+  // วันที่สิ้นสุดช่วงที่เลือก
+  const endDate = new Date();
+  endDate.setHours(23, 59, 59, 999);
+
+  // วันที่เริ่มต้นย้อนหลังตามจำนวนเดือน
+  const chartStartDate = new Date();
+
+  if (period === 0) {
+    // 7 วันล่าสุด รวมวันนี้ด้วย
+    chartStartDate.setDate(chartStartDate.getDate() - 6);
+  } else {
+    // ย้อนหลังตามจำนวนเดือนที่เลือก
+    chartStartDate.setMonth(chartStartDate.getMonth() - period);
+  }
+
+  chartStartDate.setHours(0, 0, 0, 0);
+
+  // สร้างรายการวันที่สำหรับกราฟ
+  const chartData: {
+    key: string;
+    label: string;
+    income: number;
+    expense: number;
+  }[] = [];
+
+  // แปลงวันที่เป็น YYYY-MM-DD ตามเวลาไทย
+
+
+  // รวมรายรับรายจ่ายภายในช่วงวันที่
+  const sumRange = (start: string, end: string) => {
+    const items = entries.filter(
+      (e) => e.dayKey >= start && e.dayKey <= end
+    );
+
+    return {
+      income: items
+        .filter((e) => e.type === "income")
+        .reduce((sum, e) => sum + e.amount, 0),
+
+      expense: items
+        .filter((e) => e.type === "expense")
+        .reduce((sum, e) => sum + e.amount, 0),
+    };
+  };
+
+  if (selectedDate) {
+    // เลือกวันที่จากปฏิทิน: แสดงเฉพาะวันนั้น
+    chartData.push({
+      key: selectedDate,
+      label: new Date(`${selectedDate}T12:00:00`)
+        .toLocaleDateString("th-TH", {
+          day: "numeric",
+          month: "short",
+        }),
+      ...sumRange(selectedDate, selectedDate),
+    });
+
+  } else if (period === 0) {
+    // 7 วันล่าสุด: แสดงรายวัน
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date();
+      date.setDate(date.getDate() - i);
+
+      const key = thaiKey(date);
+
+      chartData.push({
+        key,
+        label: date.toLocaleDateString("th-TH", {
+          weekday: "short",
+          day: "numeric",
+          month: "short",
+        }),
+        ...sumRange(key, key),
+      });
+    }
+
+  } else if (period === 1) {
+    // 1 เดือนย้อนหลัง: แสดงรายสัปดาห์
+    // แต่ละกลุ่มมีสูงสุด 7 วัน โดยเริ่มจากวันแรกของช่วงที่เลือก
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const start = new Date(today);
+    start.setMonth(start.getMonth() - 1);
+
+    let week = 1;
+    const cursor = new Date(start);
+
+    while (cursor <= today) {
+      const weekStart = new Date(cursor);
+      const weekEnd = new Date(cursor);
+      weekEnd.setDate(weekEnd.getDate() + 6);
+
+      if (weekEnd > today) {
+        weekEnd.setTime(today.getTime());
+      }
+
+      chartData.push({
+        key: `week-${week}`,
+        label: `สัปดาห์ ${week}`,
+        ...sumRange(thaiKey(weekStart), thaiKey(weekEnd)),
+      });
+
+      cursor.setDate(cursor.getDate() + 7);
+      week++;
+    }
+
+  } else {
+    // 3 หรือ 6 เดือนย้อนหลัง: แสดงรายเดือน
+    const today = new Date();
+
+    for (let i: number = period; i >= 0; i--) {
+      const monthStart = new Date(
+        today.getFullYear(),
+        today.getMonth() - i,
+        1
+      );
+
+      const monthEnd = new Date(
+        today.getFullYear(),
+        today.getMonth() - i + 1,
+        0
+      );
+
+      const start =
+        i === period
+          ? new Date(
+            today.getFullYear(),
+            today.getMonth() - period,
+            today.getDate()
+          )
+          : monthStart;
+
+      const end = i === 0 ? today : monthEnd;
+
+      if (start > end) continue;
+
+      chartData.push({
+        key: thaiKey(monthStart),
+        label: monthStart.toLocaleDateString("th-TH", {
+          month: "short",
+          year: "2-digit",
+        }),
+        ...sumRange(thaiKey(start), thaiKey(end)),
+      });
+    }
+  }
+  const maxBar = Math.max(
+    1,
+    ...chartData.flatMap((d) => [d.income, d.expense])
+  );
   async function addEntry(e: React.FormEvent) {
     e.preventDefault(); if (!note.trim() || !Number.isFinite(Number(amount)) || Number(amount) <= 0) return;
     setBusy(true); setError("");
-    const { error } = await supabase.from("finance_entries").insert({ entry_type: type, description: note.trim(), amount: Number(amount) });
+    const { error } = await supabase
+      .from("finance_entries")
+      .insert({
+        entry_type: type,
+        description: note.trim(),
+        amount: Number(amount),
+        entry_date: entryDate,
+      });
     if (error) setError(error.message); else { setNote(""); setAmount(""); setFormOpen(false); await load(); flash("บันทึกรายการบัญชีลง Supabase แล้ว"); }
     setBusy(false);
   }
@@ -550,6 +768,115 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
     if (error) setError(error.message); else { await load(); flash("ลบรายการบัญชีแล้ว"); } setBusy(false);
   }
   return <>
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: "16px",
+        flexWrap: "wrap",
+        marginBottom: "24px",
+      }}
+    >
+      {/* Dropdown เลือกช่วงเวลา */}
+      <label>เลือกช่วงเวลา:</label>
+
+      <select
+        value={period}
+        onChange={(e) => {
+          setPeriod(Number(e.target.value) as 0 | 1 | 3 | 6);
+          setSelectedDate("");
+        }}
+        style={{
+          padding: "12px 16px",
+          borderRadius: "10px",
+          border: "1px solid #D9CDBD",
+          background: "#D6B89C",
+          color: "#4E3728",
+          fontWeight: 600,
+        }}
+      >
+        <option value={0}>7 วันล่าสุด</option>
+        <option value={1}>ย้อนหลัง 1 เดือน</option>
+        <option value={3}>ย้อนหลัง 3 เดือน</option>
+        <option value={6}>ย้อนหลัง 6 เดือน</option>
+      </select>
+
+      {/* ปุ่มปฏิทินและช่องวันที่ */}
+      {!showCalendar ? (
+        <button
+          type="button"
+          onClick={() => setShowCalendar(true)}
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "8px",
+            padding: "12px 16px",
+            background: "#FFFDF8",
+            color: "#536A56",
+            border: "1px solid #D9CDBD",
+            borderRadius: "10px",
+            cursor: "pointer",
+            whiteSpace: "nowrap",
+          }}
+        >
+          <svg
+            width="19"
+            height="19"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            style={{ flexShrink: 0 }}
+          >
+            <rect x="3" y="5" width="18" height="16" rx="2" />
+            <path d="M16 3v4M8 3v4M3 10h18" />
+            <path d="M8 14h2M14 14h2M8 17h2" />
+          </svg>
+
+          <span>ดูแบบปฏิทิน</span>
+        </button>
+      ) : (
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          <input
+            type="date"
+            value={selectedDate}
+            onChange={(e) => setPeriod(Number(e.target.value) as 0 | 1 | 3 | 6)}
+            style={{
+              padding: "11px 14px",
+              border: "1px solid #D9CDBD",
+              borderRadius: "10px",
+              background: "#FFFDF8",
+              color: "#4E3728",
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => {
+              setShowCalendar(false);
+              setSelectedDate("");
+            }}
+            style={{
+              border: "none",
+              background: "transparent",
+              color: "#80624F",
+              cursor: "pointer",
+            }}
+          >
+            กลับ
+          </button>
+        </div>
+      )}
+    </div>
     <div className="finance-top">
       <div className="finance-stat income"><small>รายรับทั้งหมด</small><strong>฿{money(income)}</strong><span>ยอดชำระแล้ว + รายรับบันทึกเอง</span></div>
       <div className="finance-stat expense"><small>รายจ่ายทั้งหมด</small><strong>฿{money(expense)}</strong><span>จากรายการรายจ่ายที่บันทึก</span></div>
@@ -557,15 +884,79 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
     </div>
     {error && <p role="alert" style={{ color: "#a32727", padding: 12 }}>Supabase: {error}</p>}
     {loading && <p>กำลังโหลดข้อมูลบัญชี...</p>}
-    <section className="panel finance-chart-panel"><div className="page-section-head"><div><h2>ภาพรวมรายรับ–รายจ่าย</h2><p>ข้อมูลจริง 7 วันล่าสุด · เวลาไทย</p></div><div className="chart-key"><span className="green" /> รายรับ <span className="brown" /> รายจ่าย</div></div>
-      <div className="big-chart">{last7.map(d => <div className="chart-col" key={d.key}><div><i title={`รายรับ ฿${money(d.income)}`} style={{ height: `${d.income / maxBar * 100}%` }} /><i title={`รายจ่าย ฿${money(d.expense)}`} style={{ height: `${d.expense / maxBar * 100}%` }} /></div><small>{d.label}</small></div>)}</div>
+    <section className="panel finance-chart-panel"><div className="page-section-head"><div><h2>ภาพรวมรายรับ–รายจ่าย</h2><p>
+      {selectedDate
+        ? "ข้อมูลเฉพาะวันที่เลือก · เวลาไทย"
+        : period === 0
+          ? "ข้อมูลจริง 7 วันล่าสุด · รายวัน"
+          : period === 1
+            ? "ข้อมูลย้อนหลัง 1 เดือน · รายสัปดาห์"
+            : `ข้อมูลย้อนหลัง ${period} เดือน · รายเดือน`}
+    </p></div><div className="chart-key"><span className="green" /> รายรับ <span className="brown" /> รายจ่าย</div></div>
+      <div
+        style={{
+          width: "100%",
+          maxWidth: "100%",
+          overflowX: "auto",
+          overflowY: "hidden",
+        }}
+      >
+        <div
+          className="big-chart"
+          style={{
+            minWidth: period === 0 ? "100%" : `${chartData.length * 52}px`,
+          }}
+        >
+          {chartData.map(d => (
+            <div className="chart-col" key={d.key}>
+              <div>
+                <i
+                  title={`รายรับ ฿${money(d.income)}`}
+                  style={{ height: `${d.income / maxBar * 100}%` }}
+                />
+                <i
+                  title={`รายจ่าย ฿${money(d.expense)}`}
+                  style={{ height: `${d.expense / maxBar * 100}%` }}
+                />
+              </div>
+              <small>{d.label}</small>
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
     <section className="panel finance-table-panel"><div className="page-section-head"><div><h2>ตารางบัญชี</h2><p>ยอดขายมาจากออเดอร์ที่ชำระแล้ว · รายจ่ายและรายรับอื่นเพิ่มได้เอง</p></div><div className="finance-actions"><button className="outline-action" onClick={() => void load()} disabled={busy || loading}>รีเฟรชข้อมูล</button><button className="primary-action" onClick={() => setFormOpen(!formOpen)} disabled={busy}><Icon name={formOpen ? "close" : "plus"} size={17} />{formOpen ? "ปิด" : "เพิ่มรายการ"}</button></div></div>
-      {formOpen && <form className="finance-form" onSubmit={e => void addEntry(e)}><div className="type-toggle"><button type="button" className={type === "income" ? "active" : ""} onClick={() => setType("income")}>รายรับ</button><button type="button" className={type === "expense" ? "active expense" : ""} onClick={() => setType("expense")}>รายจ่าย</button></div><label><span>รายละเอียด</span><input value={note} onChange={e => setNote(e.target.value)} placeholder="เช่น ซื้อวัตถุดิบเพิ่ม" required /></label><label><span>จำนวนเงิน</span><input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required /></label><button className="primary-action" type="submit" disabled={busy}><Icon name="check" size={17} />บันทึกลง Supabase</button></form>}
+      {formOpen && <form className="finance-form" onSubmit={e => void addEntry(e)}><div className="type-toggle"><button type="button" className={type === "income" ? "active" : ""} onClick={() => setType("income")}>รายรับ</button><button type="button" className={type === "expense" ? "active expense" : ""} onClick={() => setType("expense")}>รายจ่าย</button></div>
+        <div style={{ display: "flex", gap: "12px", alignItems: "end" }}>
+  <label style={{ width: "170px", flexShrink: 0 }}>
+    <span>วันที่ทำรายการ</span>
+    <input
+      type="date"
+      value={entryDate}
+      onChange={(e) => setEntryDate(e.target.value)}
+      style={{ width: "100%", boxSizing: "border-box" }}
+      required
+    />
+  </label>
+
+  <label style={{ flex: 1, minWidth: 0 }}>
+    <span>รายละเอียด</span>
+    <input
+      value={note}
+      onChange={(e) => setNote(e.target.value)}
+      placeholder="เช่น ซื้อวัตถุดิบเพิ่ม"
+      required
+    />
+  </label>
+</div><label><span>จำนวนเงิน</span><input type="number" min="0.01" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} required /></label>
+        <button className="primary-action" type="submit" disabled={busy}><Icon name="check" size={17} />บันทึกลง Supabase</button></form>}
       <div className="account-table"><div className="table-head"><span>วันที่</span><span>ประเภท</span><span>รายละเอียด</span><span>แหล่งข้อมูล</span><span>จำนวนเงิน</span><span /></div>
-        {entries.map(entry => <div className="account-row" key={entry.id}><span>{entry.date}</span><span className={`entry-type ${entry.type}`}>{entry.type === "income" ? "รายรับ" : "รายจ่าย"}</span><div><b>{entry.category}</b><small>{entry.note}</small></div><span className="source-tag"><Icon name={entry.locked ? "bag" : "edit"} size={14} />{entry.source}</span><strong className={entry.type}>{entry.type === "income" ? "+" : "−"}฿{money(entry.amount)}</strong>{entry.locked ? <span title="รายการออเดอร์แก้ไขจากหน้าบัญชีไม่ได้">—</span> : <button disabled={busy} aria-label="ลบรายการ" onClick={() => void removeEntry(entry)}><Icon name="trash" size={17} /></button>}</div>)}
-        {!loading && entries.length === 0 && <p style={{ padding: 16 }}>ยังไม่มีรายการบัญชีหรือยอดขายที่ชำระแล้ว</p>}
-      </div>
+        {filteredEntries.map(entry => <div className="account-row" key={entry.id}><span>{entry.date}</span><span className={`entry-type ${entry.type}`}>{entry.type === "income" ? "รายรับ" : "รายจ่าย"}</span><div><b>{entry.category}</b><small>{entry.note}</small></div><span className="source-tag"><Icon name={entry.locked ? "bag" : "edit"} size={14} />{entry.source}</span><strong className={entry.type}>{entry.type === "income" ? "+" : "−"}฿{money(entry.amount)}</strong>{entry.locked ? <span title="รายการออเดอร์แก้ไขจากหน้าบัญชีไม่ได้">—</span> : <button disabled={busy} aria-label="ลบรายการ" onClick={() => void removeEntry(entry)}><Icon name="trash" size={17} /></button>}</div>)}
+{!loading && filteredEntries.length === 0 && (
+  <p style={{ padding: 16 }}>
+    ไม่มีรายการบัญชีในช่วงเวลาที่เลือก
+  </p>
+)}      </div>
     </section>
   </>;
 }
@@ -595,10 +986,10 @@ function ProductsView({ products, refresh, loading, error, flash }: { products: 
   return <section className="panel catalog-panel">
     <div className="page-section-head"><div><span className="eyebrow-admin"><Icon name="store" size={16} /> สินค้าพร้อมขาย</span><h2>รสชาติไอศกรีม</h2><p>เชื่อม Supabase products และ product_stock โดยตรง</p></div><button className="primary-action" disabled={busy} onClick={() => setOpen(!open)}><Icon name={open ? "close" : "plus"} size={18} />{open ? "ปิด" : "เพิ่มรสชาติ"}</button></div>
     {(error || actionError) && <p role="alert" style={{ color: "#a32727", padding: "12px" }}>เชื่อมต่อสินค้าไม่สำเร็จ: {error || actionError}</p>}
-    {open && <form className="catalog-form" onSubmit={add}><label><span>ชื่อรสชาติ</span><input value={name} onChange={e => setName(e.target.value)} minLength={2} required /></label><label><span>ราคาต่อถ้วย</span><input type="number" min="0.01" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required /></label><label><span>สต็อกเริ่มต้น (ถ้วย)</span><input type="number" min="0" step="1" value={quantity} onChange={e => setQuantity(e.target.value)} required /></label><button className="primary-action" disabled={busy} type="submit"><Icon name="check" size={17} /> บันทึกลง Supabase</button></form>}
+    {open && <form className="catalog-form" onSubmit={add}><label><span>ชื่อรสชาติ</span><input value={name} onChange={e => setName(e.target.value)} minLength={2} required /></label><label><span>ราคาต่อกล่อง</span><input type="number" min="0.01" step="0.01" value={price} onChange={e => setPrice(e.target.value)} required /></label><label><span>สต็อกเริ่มต้น (กล่อง)</span><input type="number" min="0" step="1" value={quantity} onChange={e => setQuantity(e.target.value)} required /></label><button className="primary-action" disabled={busy} type="submit"><Icon name="check" size={17} /> บันทึกลง Supabase</button></form>}
     {loading && <p>กำลังโหลดสินค้า...</p>}
     {!loading && !error && products.length === 0 && <p>ยังไม่มีสินค้าใน products</p>}
-    <div className="catalog-grid">{products.map(product => <article className="catalog-card" key={product.id}><span className="flavor-color" style={{ background: product.color }} /><div><small>ไอศกรีมโฮมเมด</small><h3>{product.name}</h3><b>฿{product.price} / ถ้วย</b></div><div className={`catalog-stock ${product.stock <= 5 ? "low" : ""}`}><small>คงเหลือ</small><strong>{product.stock}</strong><span>ถ้วย</span></div><div className="stock-buttons"><button disabled={busy} onClick={() => void adjust(product.id, -1)}><Icon name="minus" size={16} /> ลดสต็อก</button><button disabled={busy} onClick={() => void adjust(product.id, 1)}><Icon name="plus" size={16} /> เพิ่มสต็อก</button><button disabled={busy} className="delete" aria-label={`ซ่อน${product.name}`} onClick={() => void hide(product.id, product.name)}><Icon name="trash" size={16} /></button></div></article>)}</div>
+    <div className="catalog-grid">{products.map(product => <article className="catalog-card" key={product.id}><span className="flavor-color" style={{ background: product.color }} /><div><small>ไอศกรีมโฮมเมด</small><h3>{product.name}</h3><b>฿{product.price} / กล่อง</b></div><div className={`catalog-stock ${product.stock <= 5 ? "low" : ""}`}><small>คงเหลือ</small><strong>{product.stock}</strong><span>กล่อง</span></div><div className="stock-buttons"><button disabled={busy} onClick={() => void adjust(product.id, -1)}><Icon name="minus" size={16} /> ลดสต็อก</button><button disabled={busy} onClick={() => void adjust(product.id, 1)}><Icon name="plus" size={16} /> เพิ่มสต็อก</button><button disabled={busy} className="delete" aria-label={`ซ่อน${product.name}`} onClick={() => void hide(product.id, product.name)}><Icon name="trash" size={16} /></button></div></article>)}</div>
   </section>;
 }
 
