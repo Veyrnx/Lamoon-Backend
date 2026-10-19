@@ -623,8 +623,147 @@ function PromotionsView() {
   const [promotions, setPromotions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [formOpen, setFormOpen] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [newPromotionName, setNewPromotionName] = useState("");
+  const [newPromotionCode, setNewPromotionCode] = useState("");
+  const [newPromotionValue, setNewPromotionValue] = useState("");
+  const [newPromotionMinimum, setNewPromotionMinimum] = useState("");
+  const [savingPromotion, setSavingPromotion] = useState(false);
+  const [editingPromotionId, setEditingPromotionId] = useState<string | null>(null);
+  const [deletingPromotionId, setDeletingPromotionId] = useState<string | null>(null);
+  const deletePromotion = async (id: string) => {
+    setDeletingPromotionId(id);
 
+    try {
+      const { data, error: deleteError } = await supabase
+        .from("promotions")
+        .delete()
+        .eq("id", id)
+        .select("id");
+
+      if (deleteError) throw deleteError;
+
+      if (!data || data.length === 0) {
+        throw new Error("ไม่พบรายการที่ลบ กรุณาตรวจสอบสิทธิ์ใน Supabase");
+      }
+
+      setPromotions((previous) =>
+        previous.filter((promotion) => promotion.id !== id)
+      );
+
+      alert("ลบโปรโมชั่นสำเร็จแล้ว 🎉");
+    } catch (err) {
+      alert(
+        `ไม่สามารถลบโปรโมชั่นได้: ${err instanceof Error ? err.message : "เกิดข้อผิดพลาด"
+        }`
+      );
+    } finally {
+      setDeletingPromotionId(null);
+    }
+  };
+  const startEditingPromotion = (promotion: any) => {
+    setEditingPromotionId(promotion.id);
+    setNewPromotionName(promotion.name ?? "");
+    setNewPromotionCode(promotion.code ?? "");
+    setNewPromotionValue(String(promotion.value ?? ""));
+    setNewPromotionMinimum(
+      String(promotion.minimum_order_amount ?? 0)
+    );
+    setNewPromotionActive(Boolean(promotion.is_active));
+    setFormOpen(true);
+  };
+  const [newPromotionActive, setNewPromotionActive] = useState(true);
+  const savePromotion = async () => {
+    const name = newPromotionName.trim();
+    const code = newPromotionCode.trim().toUpperCase();
+    const value = Number(newPromotionValue);
+    const minimum = Number(newPromotionMinimum);
+
+    if (!name || !code || !newPromotionValue || !newPromotionMinimum) {
+      alert("กรุณากรอกข้อมูลโปรโมชั่นให้ครบ 4 ช่องแรก");
+      return;
+    }
+
+    if (
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      !Number.isFinite(minimum) ||
+      minimum < 0
+    ) {
+      alert("กรุณากรอกจำนวนเงินส่วนลดและยอดขั้นต่ำให้ถูกต้อง");
+      return;
+    }
+
+
+
+    setSavingPromotion(true);
+
+    try {
+      const promotionData = {
+        name,
+        code,
+        promotion_type: "fixed",
+        value,
+        minimum_order_amount: minimum,
+        member_only: false,
+        is_active: newPromotionActive,
+        starts_at: null,
+        ends_at: null,
+      };
+
+      const { data, error: saveError } = editingPromotionId
+        ? await supabase
+          .from("promotions")
+          .update(promotionData)
+          .eq("id", editingPromotionId)
+          .select("*")
+        : await supabase
+          .from("promotions")
+          .insert(promotionData)
+          .select("*");
+
+      if (saveError) throw saveError;
+      if (!data || data.length === 0) {
+        throw new Error("ไม่พบรายการโปรโมชั่นที่บันทึก กรุณาตรวจสอบสิทธิ์ใน Supabase");
+      }
+
+      setPromotions((previous) => {
+        const updated = editingPromotionId
+          ? previous.map((promotion) =>
+            promotion.id === editingPromotionId
+              ? data[0]
+              : promotion
+          )
+          : [...previous, ...data];
+
+        return updated.sort((a, b) =>
+          a.name.localeCompare(b.name, "th")
+        );
+      });
+
+      setNewPromotionName("");
+      setNewPromotionCode("");
+      setNewPromotionValue("");
+      setNewPromotionMinimum("");
+      setNewPromotionActive(true);
+      setEditingPromotionId(null);
+      setFormOpen(false);
+
+      alert(
+        editingPromotionId
+          ? "แก้ไขโปรโมชั่นสำเร็จแล้ว 🎉"
+          : "เพิ่มโปรโมชั่นสำเร็จแล้ว 🎉"
+      );
+    } catch (err) {
+      alert(
+        `ไม่สามารถเพิ่มโปรโมชั่นได้: ${err instanceof Error ? err.message : "เกิดข้อผิดพลาด"
+        }`
+      );
+    } finally {
+      setSavingPromotion(false);
+    }
+  };
   const togglePromotion = async (id: string, isActive: boolean) => {
     setUpdatingId(id);
 
@@ -672,6 +811,172 @@ function PromotionsView() {
   return (
     <section className="panel" style={{ padding: "24px" }}>
       <h2>จัดการโปรโมชั่น</h2>
+      <button
+        type="button"
+        className="outline-action"
+        onClick={() => setFormOpen(true)}
+        style={{ marginTop: "12px", marginBottom: "16px" }}
+      >
+        <Icon name="plus" size={18} /> เพิ่มโปรโมชั่น
+      </button>
+      {formOpen && (
+        <div
+          style={{
+            padding: "20px",
+            marginBottom: "20px",
+            border: "1px solid #e5e7eb",
+            borderRadius: "12px",
+            backgroundColor: "#fafaf9",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+            }}
+          >
+            <h3>
+              {editingPromotionId ? "แก้ไขโปรโมชั่น" : "เพิ่มโปรโมชั่นใหม่"}
+            </h3>
+
+            <button
+              type="button"
+              className="outline-action"
+              onClick={() => {
+                setFormOpen(false);
+                setEditingPromotionId(null);
+                setNewPromotionName("");
+                setNewPromotionCode("");
+                setNewPromotionValue("");
+                setNewPromotionMinimum("");
+                setNewPromotionActive(true);
+              }}
+            >
+              ยกเลิก
+            </button>
+          </div>
+
+          <label style={{ display: "block", marginTop: "16px" }}>
+            <span style={{ display: "block", marginBottom: "8px" }}>
+              ชื่อโปรโมชั่น
+            </span>
+            <input
+              type="text"
+              value={newPromotionName}
+              onChange={(e) => setNewPromotionName(e.target.value)}
+              placeholder="เช่น สุขสันต์วันปีใหม่"
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #d6d3d1",
+                borderRadius: "8px",
+              }}
+            />
+          </label>
+          <label style={{ display: "block", marginTop: "16px" }}>
+            <span style={{ display: "block", marginBottom: "8px" }}>
+              รหัสส่วนลด
+            </span>
+            <input
+              type="text"
+              value={newPromotionCode}
+              onChange={(e) => setNewPromotionCode(e.target.value.toUpperCase())}
+              placeholder="เช่น NEWYEAR120"
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #d6d3d1",
+                borderRadius: "8px",
+              }}
+            />
+          </label>
+          <label style={{ display: "block", marginTop: "16px" }}>
+            <span style={{ display: "block", marginBottom: "8px" }}>
+              จำนวนเงินส่วนลด (บาท)
+            </span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={newPromotionValue}
+              onChange={(e) => setNewPromotionValue(e.target.value)}
+              placeholder="เช่น 120"
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #d6d3d1",
+                borderRadius: "8px",
+              }}
+            />
+          </label>
+          <label style={{ display: "block", marginTop: "16px" }}>
+            <span style={{ display: "block", marginBottom: "8px" }}>
+              ยอดสั่งซื้อขั้นต่ำ (บาท)
+            </span>
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={newPromotionMinimum}
+              onChange={(e) => setNewPromotionMinimum(e.target.value)}
+              placeholder="เช่น 600"
+              style={{
+                width: "100%",
+                padding: "12px",
+                border: "1px solid #d6d3d1",
+                borderRadius: "8px",
+              }}
+            />
+          </label>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "12px",
+              marginTop: "20px",
+              marginBottom: "12px",
+              cursor: "pointer",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={newPromotionActive}
+              onChange={(e) => setNewPromotionActive(e.target.checked)}
+              style={{
+                width: "20px",
+                height: "20px",
+                accentColor: "#8B5E3C",
+                cursor: "pointer",
+              }}
+            />
+            <span>
+              {newPromotionActive
+                ? "🟢 เปิดใช้งานโปรโมชั่น"
+                : "⚪ ปิดใช้งานโปรโมชั่น"}
+            </span>
+          </label>
+
+          <button
+            type="button"
+            disabled={savingPromotion}
+            onClick={() => void savePromotion()}
+            style={{
+              marginTop: "20px",
+              padding: "12px 24px",
+              backgroundColor: "#8B5E3C",
+              color: "#FFFFFF",
+              border: "none",
+              borderRadius: "10px",
+              fontWeight: "600",
+              cursor: savingPromotion ? "not-allowed" : "pointer",
+              opacity: savingPromotion ? 0.6 : 1,
+            }}
+          >
+            {savingPromotion ? "กำลังบันทึก..." : "บันทึกโปรโมชั่น"}
+          </button>
+        </div>
+      )}
       {loading && <p>กำลังโหลดโปรโมชั่น...</p>}
 
       {error && <p style={{ color: "red" }}>เกิดข้อผิดพลาด: {error}</p>}
@@ -707,6 +1012,39 @@ function PromotionsView() {
                 ? "ปิดใช้งาน"
                 : "เปิดใช้งาน"}
           </button>
+          <button
+            type="button"
+            className="outline-action"
+            onClick={() => startEditingPromotion(promotion)}
+            style={{
+              marginLeft: "10px",
+              borderColor: "#8B5E3C",
+              color: "#8B5E3C",
+            }}
+          >
+            แก้ไข
+          </button>
+          <button
+            type="button"
+            className="outline-action"
+            disabled={deletingPromotionId === promotion.id}
+            onClick={() => {
+              const confirmed = window.confirm(
+                `ต้องการลบโปรโมชั่น "${promotion.name}" ใช่หรือไม่?`
+              );
+
+              if (!confirmed) return;
+
+              void deletePromotion(promotion.id);
+            }}
+            style={{
+              marginLeft: "10px",
+              borderColor: "#DC2626",
+              color: "#DC2626",
+            }}
+          >
+            {deletingPromotionId === promotion.id ? "กำลังลบ..." : "ลบ"}
+          </button>
         </div>
       ))}
     </section>
@@ -722,6 +1060,10 @@ function FinanceView({ flash }: { flash: (message: string) => void }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
+  const [newPromotionName, setNewPromotionName] = useState("");
+  const [newPromotionCode, setNewPromotionCode] = useState("");
+  const [newPromotionValue, setNewPromotionValue] = useState("");
+  const [newPromotionMinimum, setNewPromotionMinimum] = useState("");
   const [type, setType] = useState<"income" | "expense">("expense");
   const [note, setNote] = useState("");
   const [amount, setAmount] = useState("");
