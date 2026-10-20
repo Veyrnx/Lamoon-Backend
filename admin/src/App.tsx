@@ -174,6 +174,22 @@ function App() {
               String(delivery.getDate()).padStart(2, "0"),
             ].join("-")
             : undefined;
+          const hasTubIceCream = (row.order_items ?? []).some(
+            (item: any) => String(item.product_name_snapshot ?? "").includes("ไอศกรีมแบบถัง")
+          );
+
+          const tubDeliveryText =
+            hasTubIceCream && delivery && !Number.isNaN(delivery.getTime())
+              ? delivery.toLocaleString("th-TH", {
+                timeZone: "Asia/Bangkok",
+                day: "numeric",
+                month: "short",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              }) + " น."
+              : null;
           return {
             id: row.order_number || row.id,
             databaseId: row.id,
@@ -185,7 +201,13 @@ function App() {
             orderDate: row.order_date
               ? String(row.order_date).slice(0, 10)
               : undefined,
-            dueText: delivery ? (delivery.getTime() < Date.now() ? "เลยกำหนดส่ง" : "กำหนดส่งตามวันที่ระบุ") : "ยังไม่กำหนดวันส่ง",
+            dueText: tubDeliveryText
+              ? `กำหนดส่ง ${tubDeliveryText}`
+              : delivery
+                ? (delivery.getTime() < Date.now()
+                  ? "เลยกำหนดส่ง"
+                  : "กำหนดส่งตามวันที่ระบุ")
+                : "ยังไม่กำหนดวันส่ง",
             items: (row.order_items ?? []).map((item: any) => {
               const flavor = item.item_options?.flavor;
 
@@ -455,8 +477,22 @@ function OrdersView({ orders, selected, onSelect, onUpdate, onAccept, onEdit, on
             </div>
           </div>
           <div className="filter-tabs">
-            {[["all", "ทั้งหมด"], ["new", "รออนุมัติ"], ["preparing", "กำลังเตรียม"], ["shipping", "กำลังส่ง"], ["delivered", "ส่งสำเร็จ"]].map(([value, label]) => <button key={value} className={filter === value ? "active" : ""} onClick={() => setFilter(value)}>{label}</button>)}
-          </div>
+            {[
+              ["all", "ทั้งหมด"],
+              ["new", "รออนุมัติ"],
+              ["preparing", "กำลังเตรียม"],
+              ["ready", "พร้อมจัดส่ง"],
+              ["shipping", "กำลังจัดส่ง"],
+              ["delivered", "ส่งสำเร็จ"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={filter === value ? "active" : ""}
+                onClick={() => setFilter(value)}
+              >
+                {label}
+              </button>
+            ))}          </div>
           <div className="order-list">
             {filtered.map((order) => (
               <button key={order.id} className={`order-list-item ${selected?.id === order.id ? "active" : ""}`} onClick={() => onSelect(order.id)}>
